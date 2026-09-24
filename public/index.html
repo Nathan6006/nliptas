@@ -104,7 +104,7 @@ main{padding-block:20px 60px}
 .ro .t{font-family:var(--f-mono);font-size:12.5px;color:var(--ink-2)}
 .ghost{border:1px dashed var(--line-2);background:none;color:var(--ink-2);border-radius:8px;padding:6px 11px;font-size:13px;cursor:pointer;align-self:flex-start}
 .ghost:hover{border-color:var(--ink-3);color:var(--ink)}
-/* ---- reminders ---- */
+/* ---- tasks ---- */
 .rem-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
 .rem-head .count{font-family:var(--f-mono);font-size:11px;color:var(--ink-3);margin-left:6px}
 .linkbtn{border:0;background:none;padding:0;font-size:12.5px;color:var(--ink-3);cursor:pointer}
@@ -139,6 +139,40 @@ button.due:hover{background:var(--panel-2);color:var(--ink)}
 .duemenu label{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 10px;font-size:13.5px;border-top:1px solid var(--line);margin-top:4px;padding-top:9px}
 .duemenu input[type=date]{border:1px solid var(--line-2);background:var(--panel-2);border-radius:7px;padding:4px 6px;font:inherit;font-size:13px;color:var(--ink)}
 .duemenu .clear{color:var(--noise)}
+/* ---- task groups ---- */
+.grp{display:flex;flex-direction:column}
+.grp-head{display:flex;align-items:center;gap:4px;padding:12px 0 5px;border-bottom:1px solid var(--line)}
+.grp .caret{flex:none;width:20px;height:20px;border:0;background:none;padding:0;color:var(--ink-3);cursor:pointer;font-size:10px;line-height:1;display:grid;place-items:center;border-radius:5px;transition:transform .15s}
+.grp .caret:hover{background:var(--panel-2);color:var(--ink)}
+.grp.collapsed>.grp-head .caret{transform:rotate(-90deg)}
+.grp-name{flex:1;min-width:0;border:0;background:none;padding:1px 0;font-family:var(--f-disp);font-weight:700;font-size:15.5px;color:var(--acc,var(--ink));outline:none;text-overflow:ellipsis}
+.grp-name::placeholder{color:var(--ink-3);font-weight:600}
+.grp .grp .grp-name{font-size:14px;color:var(--ink)}
+.grp-count{flex:none;font-family:var(--f-mono);font-size:11px;color:var(--ink-3);padding:0 4px}
+.grp-act{flex:none;display:flex;align-items:center;gap:2px;opacity:0;transition:opacity .12s}
+.grp-head:hover .grp-act,.grp-head:focus-within .grp-act{opacity:1}
+.grp-act button{border:0;background:none;color:var(--ink-3);cursor:pointer;padding:3px 6px;border-radius:6px;font-size:12px;white-space:nowrap}
+.grp-act button:hover{background:var(--panel-2);color:var(--ink)}
+.grp-act .gx{font-size:15px;line-height:1}
+.grp-act .gx:hover{color:var(--noise);background:var(--noi-soft)}
+@media (pointer:coarse){.grp-act{opacity:.75}}
+.grp-body{padding-left:24px;display:flex;flex-direction:column}
+.grp.collapsed>.grp-body{display:none}
+/* ---- task drag and drop ---- */
+.rem,.grp-head{position:relative}
+.drag-h{position:absolute;left:-15px;top:50%;transform:translateY(-50%);width:13px;height:24px;display:grid;place-items:center;color:var(--ink-3);cursor:grab;opacity:0;touch-action:none;font-size:11px;line-height:1;border-radius:4px;user-select:none;-webkit-user-select:none}
+.grp-head>.drag-h{top:calc(50% + 3px)}
+.rem:hover>.drag-h,.grp-head:hover>.drag-h{opacity:1}
+.drag-h:hover{color:var(--ink);background:var(--panel-2)}
+@media (pointer:coarse){.drag-h{opacity:.45}}
+.drag-ghost{position:fixed;z-index:60;pointer-events:none;background:var(--panel);box-shadow:var(--shadow);border:1px solid var(--line-2);border-radius:9px;padding:0 10px;opacity:.96;margin:0}
+.drag-ghost .rem-main,.drag-ghost.grp-head{border-bottom:0}
+.drag-ghost .drag-h,.drag-ghost .grp-act,.drag-ghost .x,.drag-ghost .due.add{display:none}
+.drag-src{opacity:.3}
+.drop-line{position:fixed;z-index:59;height:2px;border-radius:2px;background:var(--ink);pointer-events:none;display:none}
+.drop-line::before{content:"";position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;border:2px solid var(--ink);background:var(--panel);box-sizing:border-box}
+.drop-into{background:color-mix(in srgb,var(--ink) 9%,transparent);border-radius:7px}
+body.tdragging,body.tdragging *{cursor:grabbing!important;user-select:none;-webkit-user-select:none}
 /* ---- undo toast ---- */
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,12px);opacity:0;pointer-events:none;z-index:50;display:flex;align-items:center;gap:12px;background:var(--ink);color:var(--bg);border-radius:10px;padding:9px 14px;font-size:13.5px;box-shadow:var(--shadow);transition:opacity .18s,transform .18s;max-width:calc(100vw - 32px)}
 .toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
@@ -308,10 +342,11 @@ var saveNote="";
 var dirty={};
 var saveTimer=null;
 
-/* Reminders: one running list per person, independent of the day.
-   tasks[person] = {items:[{id,text,due,done,doneAt,createdAt}], migrated} */
+/* Tasks: one running list per person, independent of the day, in nested groups.
+   tasks[person] = {items:[{id,text,due,done,doneAt,createdAt,group}],
+                    groups:[{id,name,parent,collapsed}], migrated} */
 var tasks={};
-PEOPLE.forEach(function(p){tasks[p.k]={items:[],migrated:false};});
+PEOPLE.forEach(function(p){tasks[p.k]={items:[],groups:[],migrated:false};});
 var tasksDirty={};
 var tasksLoaded=false;
 var entriesLoaded=false;
@@ -389,10 +424,23 @@ function cleanTask(t){
   if(!t||typeof t.text!=="string"||!t.text.trim())return null;
   return{id:String(t.id||newId()),text:t.text.slice(0,500),
     due:/^\d{4}-\d{2}-\d{2}$/.test(t.due||"")?t.due:"",
-    done:!!t.done,doneAt:t.done?String(t.doneAt||""):"",createdAt:String(t.createdAt||"")};
+    done:!!t.done,doneAt:t.done?String(t.doneAt||""):"",createdAt:String(t.createdAt||""),
+    group:typeof t.group==="string"?t.group:""};
 }
+/* Groups nest by `parent` ("" is the top level). Anything pointing at a group
+   that no longer exists, or looping back on itself, falls back to the top. */
 function cleanList(v){
-  return{items:(v&&Array.isArray(v.items)?v.items:[]).map(cleanTask).filter(Boolean),migrated:!!(v&&v.migrated)};
+  var groups=(v&&Array.isArray(v.groups)?v.groups:[]).filter(function(g){return g&&g.id;}).map(function(g){
+    return{id:String(g.id),name:typeof g.name==="string"?g.name.slice(0,80):"",parent:typeof g.parent==="string"?g.parent:"",collapsed:!!g.collapsed};
+  });
+  var byId={};groups.forEach(function(g){byId[g.id]=g;});
+  groups.forEach(function(g){
+    var seen={},p=g.parent;
+    while(p){if(!byId[p]||seen[p]||p===g.id){g.parent="";break;}seen[p]=1;p=byId[p].parent;}
+  });
+  var items=(v&&Array.isArray(v.items)?v.items:[]).map(cleanTask).filter(Boolean);
+  items.forEach(function(t){if(t.group&&!byId[t.group])t.group="";});
+  return{items:items,groups:groups,migrated:!!(v&&v.migrated)};
 }
 function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function tsSave(){try{localStorage.setItem("sl.tasks",JSON.stringify(tasks));}catch(e){}}
@@ -411,7 +459,7 @@ function markTasksDirty(person){
 }
 
 /* Carry the old per-day task text into the running list, once: the most
-   recent day that had any becomes the starting reminders. */
+   recent day that had any becomes the starting tasks. */
 function maybeMigrate(){
   var me=state.me;
   if(!me||usingSample||!tasksLoaded||!entriesLoaded||tasks[me].migrated)return;
@@ -424,7 +472,7 @@ function maybeMigrate(){
   var stamp=new Date().toISOString();
   if(best)best.tasks.split(/\r?\n/).forEach(function(line){
     var t=line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/,"").trim();
-    if(t)tasks[me].items.push({id:newId(),text:t,due:"",done:false,doneAt:"",createdAt:stamp});
+    if(t)tasks[me].items.push({id:newId(),text:t,due:"",done:false,doneAt:"",createdAt:stamp,group:""});
   });
   tasks[me].migrated=true;
   quietly(function(){markTasksDirty(me);});
@@ -487,7 +535,7 @@ function flush(){
       ops.push(function(){return db.collection("entries").doc(id).set({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours,updatedAt:new Date().toISOString()});});
     });
     who.forEach(function(p){
-      ops.push(function(){return db.collection("tasks").doc(p).set({items:tasks[p].items,migrated:tasks[p].migrated,updatedAt:new Date().toISOString()});});
+      ops.push(function(){return db.collection("tasks").doc(p).set({items:tasks[p].items,groups:tasks[p].groups,migrated:tasks[p].migrated,updatedAt:new Date().toISOString()});});
     });
     var i=0;
     (function next(){
@@ -502,7 +550,7 @@ function flush(){
     var body={};
     var items=payloadFor(ids);
     if(items.length)body.entries=items;
-    if(who.length)body.tasks=who.map(function(p){return{person:p,items:tasks[p].items,migrated:tasks[p].migrated};});
+    if(who.length)body.tasks=who.map(function(p){return{person:p,items:tasks[p].items,groups:tasks[p].groups,migrated:tasks[p].migrated};});
     if(!body.entries&&!body.tasks)return;
     setNote("saving…");
     api("POST",body).then(function(){
@@ -582,7 +630,7 @@ function goLocal(){
   softRender();
 }
 
-/* Same idea for reminders. A list only its owner writes, so a list with edits
+/* Same idea for tasks. A list only its owner writes, so a list with edits
    in flight stays local; one the server has never seen gets pushed up. */
 var lastTasksRemote="";
 function adoptTasks(fresh){
@@ -643,7 +691,7 @@ function startPoll(){
 /* ---------------- render plumbing ---------------- */
 var pendingRender=false;
 function isEditing(){
-  if(drag||dueMenu)return true;
+  if(drag||dueMenu||tdrag)return true;
   var a=document.activeElement;
   return !!(a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA"));
 }
@@ -871,7 +919,7 @@ function planPane(p){
     paste.onclick=function(){pasteFlow(date,p.k,body);};
     body.appendChild(paste);
     body.appendChild(el("div","sep"));
-    body.appendChild(reminders(p,true));
+    body.appendChild(taskList(p,true));
   }else{
     if(e&&e.blocks.length){
       var list=el("div");
@@ -886,7 +934,7 @@ function planPane(p){
       body.appendChild(el("div","empty",p.n+" hasn't planned "+relDate(date)+" yet."));
     }
     body.appendChild(el("div","sep"));
-    body.appendChild(reminders(p,false));
+    body.appendChild(taskList(p,false));
   }
   pane.style.setProperty("--acc",p.c);
   pane.appendChild(body);
@@ -939,7 +987,7 @@ function pasteFlow(date,person,host){
       else loose.push(a||b);
     });
     if(blocks.length)e.blocks=e.blocks.filter(function(x){return x.t||x.w;}).concat(blocks);
-    loose.forEach(function(t){addTask(person,t,"");});
+    loose.forEach(function(t){addTask(person,t,"","");});
     markDirty(key(date,person));render();
   };
   no.onclick=function(){box.remove();};
@@ -949,10 +997,10 @@ function pasteFlow(date,person,host){
   ta.focus();
 }
 
-/* ---------------- reminders ---------------- */
+/* ---------------- tasks ---------------- */
 var showDone={};
 var hideTimers={};
-var drafts={};          // person -> {due, set}: the add row's date while typing
+var drafts={};          // person|group -> {due, set, text}: an add row mid-typing
 var dueMenu=null;
 
 function dueInfo(due){
@@ -990,51 +1038,78 @@ function parseDue(text){
   return{text:m[1].replace(/\s+(by|due|on)$/i,""),due:due};
 }
 
-function sortOpen(items){
-  return items.filter(function(t){return!t.done;}).sort(function(a,b){
-    if(a.due&&b.due&&a.due!==b.due)return a.due<b.due?-1:1;
-    if(!!a.due!==!!b.due)return a.due?-1:1;
-    return a.createdAt<b.createdAt?-1:a.createdAt>b.createdAt?1:0;
-  });
-}
 
-function addTask(person,text,due){
+function addTask(person,text,due,group){
   text=text.trim();
   if(!text)return;
   if(due===null||due===undefined){var pd=parseDue(text);if(pd){text=pd.text;due=pd.due;}}
-  tasks[person].items.push({id:newId(),text:text,due:due||"",done:false,doneAt:"",createdAt:new Date().toISOString()});
+  tasks[person].items.push({id:newId(),text:text,due:due||"",done:false,doneAt:"",createdAt:new Date().toISOString(),group:group||""});
   markTasksDirty(person);
 }
 
-function focusNew(person){
-  setTimeout(function(){var n=document.getElementById("rem-new-"+person);if(n)n.focus();},0);
+function newRowId(person,gid){return"rem-new-"+person+"-"+(gid||"top");}
+function focusNew(person,gid){
+  setTimeout(function(){var n=document.getElementById(newRowId(person,gid));if(n)n.focus();},0);
+}
+function childGroups(person,gid){return tasks[person].groups.filter(function(g){return g.parent===(gid||"");});}
+function subtreeIds(person,gid){
+  var out=[gid];
+  childGroups(person,gid).forEach(function(g){out=out.concat(subtreeIds(person,g.id));});
+  return out;
+}
+function openIn(person,gid){
+  var ids={};subtreeIds(person,gid).forEach(function(i){ids[i]=1;});
+  return tasks[person].items.filter(function(t){return!t.done&&ids[t.group];}).length;
 }
 
-function reminders(p,mine){
+function addGroup(person,parent){
+  var g={id:newId(),name:"",parent:parent||"",collapsed:false};
+  tasks[person].groups.push(g);
+  tasks[person].groups.forEach(function(x){if(x.id===parent)x.collapsed=false;});
+  markTasksDirty(person);
+  render();
+  setTimeout(function(){var n=document.getElementById("grp-name-"+g.id);if(n)n.focus();},0);
+}
+
+function deleteGroup(person,g){
+  var ids={};subtreeIds(person,g.id).forEach(function(i){ids[i]=1;});
+  var list=tasks[person];
+  list.groups=list.groups.filter(function(x){return!ids[x.id];});
+  list.items=list.items.filter(function(t){return!ids[t.group];});
+  markTasksDirty(person);
+  render();
+  toast("Deleted “"+(g.name||"Untitled")+"”",["Undo",undo]);
+}
+
+function taskList(p,mine){
   var person=p.k,list=tasks[person];
-  var open=sortOpen(list.items);
-  var done=list.items.filter(function(t){return t.done;}).sort(function(a,b){return a.doneAt<b.doneAt?1:-1;});
+  var open=list.items.filter(function(t){return!t.done;}).length;
+  var done=list.items.filter(function(t){return t.done;});
   var box=el("div");
 
   var head=el("div","rem-head");
-  var h=el("div","lbl","Reminders");
-  if(open.length)h.appendChild(el("span","count",String(open.length)));
+  var h=el("div","lbl","Tasks");
+  if(open)h.appendChild(el("span","count",String(open)));
   head.appendChild(h);
+  var right=el("div","row");right.style.gap="14px";
   if(mine&&done.length){
     var tg=el("button","linkbtn",showDone[person]?"Hide completed":"Show completed ("+done.length+")");
     tg.onclick=function(){showDone[person]=!showDone[person];render();};
-    head.appendChild(tg);
+    right.appendChild(tg);
   }
+  if(mine){
+    var ng=el("button","linkbtn","+ Group");
+    ng.title="New group";
+    ng.onclick=function(){addGroup(person,"");};
+    right.appendChild(ng);
+  }
+  head.appendChild(right);
   box.appendChild(head);
 
-  var ul=el("div","rems");
-  open.forEach(function(t){ul.appendChild(remRow(person,t,mine));});
-  if(mine)ul.appendChild(newRow(person));
-  else if(!open.length)ul.appendChild(el("div","empty","Nothing on "+p.n+"'s list."));
-  if(mine&&showDone[person]&&done.length){
-    done.slice(0,50).forEach(function(t){ul.appendChild(remRow(person,t,true));});
-  }
-  box.appendChild(ul);
+  if(!mine&&!open){box.appendChild(el("div","empty","Nothing on "+p.n+"'s list."));return box;}
+  var top=groupBody(person,"",mine);
+  top.classList.add("rems-top");
+  box.appendChild(top);
   if(mine&&showDone[person]&&done.length){
     var clr=el("button","linkbtn","Clear completed");
     clr.style.marginTop="8px";
@@ -1042,6 +1117,233 @@ function reminders(p,mine){
     box.appendChild(clr);
   }
   return box;
+}
+
+/* One level of the tree: its tasks, its add row, then its subgroups. */
+function groupBody(person,gid,mine){
+  var ul=el("div","rems");
+  var here=tasks[person].items.filter(function(t){return t.group===gid;});
+  /* Manual order: the array order is the list order, set by dragging. */
+  here.filter(function(t){return!t.done;}).forEach(function(t){ul.appendChild(remRow(person,t,mine));});
+  if(mine&&showDone[person]){
+    here.filter(function(t){return t.done;}).sort(function(a,b){return a.doneAt<b.doneAt?1:-1;})
+      .slice(0,50).forEach(function(t){ul.appendChild(remRow(person,t,true));});
+  }
+  if(mine)ul.appendChild(newRow(person,gid));
+  childGroups(person,gid).forEach(function(g){
+    if(!mine&&!openIn(person,g.id))return;
+    ul.appendChild(groupBlock(person,g,mine));
+  });
+  return ul;
+}
+
+function groupBlock(person,g,mine){
+  var wrap=el("div","grp"+(g.collapsed?" collapsed":""));
+  wrap.dataset.gid=g.id;
+  var head=el("div","grp-head");
+  head.dataset.gid=g.id;
+  if(mine)head.appendChild(dragHandle(person,"group",g.id,head));
+  var car=el("button","caret","▾");
+  car.setAttribute("aria-expanded",String(!g.collapsed));
+  car.setAttribute("aria-label",(g.collapsed?"Expand ":"Collapse ")+(g.name||"group"));
+  car.onclick=function(){g.collapsed=!g.collapsed;markTasksDirty(person);render();};
+  head.appendChild(car);
+  if(mine){
+    var nm=document.createElement("input");
+    nm.className="grp-name";nm.id="grp-name-"+g.id;nm.value=g.name;
+    nm.placeholder=g.parent?"Subgroup name":"Group name";nm.setAttribute("aria-label","Group name");
+    nm.onkeydown=function(ev){
+      if(ev.key==="Enter"){ev.preventDefault();nm.blur();if(nm.value.trim())focusNew(person,g.id);}
+      if(ev.key==="Escape"){nm.value=g.name;nm.blur();}
+    };
+    nm.onblur=function(){
+      var v=nm.value.trim();
+      var empty=!tasks[person].items.some(function(t){return t.group===g.id;})&&!childGroups(person,g.id).length;
+      if(!v&&empty){
+        tasks[person].groups=tasks[person].groups.filter(function(x){return x!==g;});
+        markTasksDirty(person);softRender();return;
+      }
+      if(v!==g.name){g.name=v||"Untitled";markTasksDirty(person);softRender();}
+    };
+    head.appendChild(nm);
+  }else head.appendChild(el("span","grp-name",g.name||"Untitled"));
+  var n=openIn(person,g.id);
+  if(n)head.appendChild(el("span","grp-count",String(n)));
+  if(mine){
+    var act=el("div","grp-act");
+    var sub=el("button",null,"+ Subgroup");
+    sub.onclick=function(){addGroup(person,g.id);};
+    act.appendChild(sub);
+    var x=el("button","gx","×");x.title="Delete group";x.setAttribute("aria-label","Delete group "+(g.name||""));
+    x.onclick=function(){deleteGroup(person,g);};
+    act.appendChild(x);
+    head.appendChild(act);
+  }
+  wrap.appendChild(head);
+  var body=el("div","grp-body");
+  body.appendChild(groupBody(person,g.id,mine));
+  wrap.appendChild(body);
+  return wrap;
+}
+
+/* ---- drag to move ----
+   Grab a task or group by its ⠿ handle. Tasks drop between tasks, onto a
+   group's header (into it), or onto an "Add task" line (end of that group).
+   Groups drop onto a header's top part (before it) or the rest (into it), or
+   anywhere inside a list (to the end of that level). */
+var tdrag=null;
+
+function moveTask(person,id,group,before){
+  var items=tasks[person].items,i;
+  for(i=0;i<items.length;i++)if(items[i].id===id)break;
+  if(i===items.length)return;
+  var t=items.splice(i,1)[0];
+  t.group=group||"";
+  var at=-1;
+  if(before)for(i=0;i<items.length;i++)if(items[i].id===before){at=i;break;}
+  if(at<0){at=items.length;for(i=items.length-1;i>=0;i--)if(items[i].group===t.group){at=i+1;break;}}
+  items.splice(at,0,t);
+}
+function moveGroup(person,id,parent,before){
+  if(subtreeIds(person,id).indexOf(parent)>=0)return false;
+  var gs=tasks[person].groups,i;
+  for(i=0;i<gs.length;i++)if(gs[i].id===id)break;
+  if(i===gs.length)return false;
+  var g=gs.splice(i,1)[0];
+  g.parent=parent||"";
+  gs.forEach(function(x){if(x.id===parent)x.collapsed=false;});
+  var at=-1;
+  if(before)for(i=0;i<gs.length;i++)if(gs[i].id===before){at=i;break;}
+  if(at<0){at=gs.length;for(i=gs.length-1;i>=0;i--)if(gs[i].parent===g.parent){at=i+1;break;}}
+  gs.splice(at,0,g);
+  return true;
+}
+
+function dragHandle(person,kind,id,src){
+  var h=el("span","drag-h","⠿");
+  h.title="Drag to move";
+  h.setAttribute("aria-hidden","true");
+  h.addEventListener("pointerdown",function(ev){startTaskDrag(ev,person,kind,id,src);});
+  return h;
+}
+
+function startTaskDrag(ev,person,kind,id,src){
+  if(ev.button!==0||tdrag)return;
+  ev.preventDefault();
+  var pane=src.closest(".pane");
+  var x0=ev.clientX,y0=ev.clientY,lx=x0,ly=y0,started=false;
+  var ghost=null,line=null,offX=0,offY=0,target=null,lit=null,raf=0;
+  var banned=kind==="group"?subtreeIds(person,id):[];
+  tdrag={};
+
+  function begin(){
+    started=true;
+    var r=src.getBoundingClientRect();
+    offX=x0-r.left;offY=y0-r.top;
+    ghost=src.cloneNode(true);
+    ghost.classList.add("drag-ghost");
+    ghost.style.width=r.width+"px";
+    ghost.style.setProperty("--acc",getComputedStyle(pane).getPropertyValue("--acc"));
+    document.body.appendChild(ghost);
+    line=el("div","drop-line");document.body.appendChild(line);
+    (kind==="group"?src.closest(".grp"):src).classList.add("drag-src");
+    document.body.classList.add("tdragging");
+    if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
+    loop();
+  }
+  function showLine(r,atBottom,indent){
+    line.style.display="block";
+    line.style.left=(r.left+(indent||0))+"px";
+    line.style.width=Math.max(20,r.width-(indent||0))+"px";
+    line.style.top=((atBottom?r.bottom:r.top)-1)+"px";
+  }
+  function light(node){if(lit)lit.classList.remove("drop-into");lit=node;if(node)node.classList.add("drop-into");}
+  function nextTaskId(row){
+    for(var n=row.nextElementSibling;n;n=n.nextElementSibling){if(n.classList.contains("rem")&&n.dataset.id)return n.dataset.id;if(n.classList.contains("new"))return null;}
+    return null;
+  }
+  function compute(){
+    target=null;line.style.display="none";light(null);
+    var at=document.elementFromPoint(lx,ly);
+    if(!at||!pane.contains(at))return;
+    var row=at.closest(".rem"),head=at.closest(".grp-head");
+    var r;
+    if(kind==="task"){
+      if(row&&row.dataset.id){
+        if(row.dataset.id===id)return;
+        r=row.getBoundingClientRect();
+        var below=ly>r.top+r.height/2;
+        var before=below?nextTaskId(row):row.dataset.id;
+        if(before===id)return;
+        target={group:row.dataset.group,before:before};
+        showLine(r,below,32);
+      }else if(row&&row.classList.contains("new")){
+        target={group:row.dataset.group,before:null};
+        showLine(row.getBoundingClientRect(),false,32);
+      }else if(head){
+        target={group:head.dataset.gid,before:null};
+        light(head);
+      }
+      return;
+    }
+    if(head){
+      var gid=head.dataset.gid;
+      if(banned.indexOf(gid)>=0)return;
+      r=head.getBoundingClientRect();
+      var g=tasks[person].groups.filter(function(x){return x.id===gid;})[0];
+      if(ly<r.top+r.height*0.4){target={parent:g.parent,before:gid};showLine(r,false,0);}
+      else{target={parent:gid,before:null};light(head);}
+      return;
+    }
+    var list=at.closest(".rems");
+    if(list&&pane.contains(list)){
+      var holder=list.closest(".grp");
+      var pg=holder?holder.dataset.gid:"";
+      if(banned.indexOf(pg)>=0)return;
+      target={parent:pg,before:null};
+      if(holder)light(holder.querySelector(".grp-head"));
+      else showLine(list.getBoundingClientRect(),true,0);
+    }
+  }
+  function loop(){
+    if(!started)return;
+    if(ly<70)window.scrollBy(0,-Math.ceil((70-ly)/5));
+    else if(ly>window.innerHeight-70)window.scrollBy(0,Math.ceil((ly-window.innerHeight+70)/5));
+    compute();
+    raf=requestAnimationFrame(loop);
+  }
+  function onMove(e){
+    lx=e.clientX;ly=e.clientY;
+    if(!started){if(Math.abs(lx-x0)+Math.abs(ly-y0)<5)return;begin();}
+    ghost.style.left=(lx-offX)+"px";ghost.style.top=(ly-offY)+"px";
+  }
+  function end(drop){
+    window.removeEventListener("pointermove",onMove);
+    window.removeEventListener("pointerup",onUp);
+    window.removeEventListener("pointercancel",onCancel);
+    window.removeEventListener("keydown",onKey,true);
+    cancelAnimationFrame(raf);
+    if(ghost)ghost.remove();
+    if(line)line.remove();
+    light(null);
+    document.body.classList.remove("tdragging");
+    var wasStarted=started;started=false;tdrag=null;
+    if(!wasStarted)return;
+    if(drop&&target){
+      var ok=true;
+      if(kind==="task")moveTask(person,id,target.group,target.before);
+      else ok=moveGroup(person,id,target.parent,target.before);
+      if(ok){markTasksDirty(person);render();return;}
+    }
+    render();
+  }
+  function onUp(e){lx=e.clientX;ly=e.clientY;if(started)compute();end(true);}
+  function onCancel(){end(false);}
+  function onKey(e){if(e.key==="Escape"&&started){e.preventDefault();window.removeEventListener("keydown",onKey,true);end(false);}}
+  window.addEventListener("keydown",onKey,true);
+  window.addEventListener("pointermove",onMove);
+  window.addEventListener("pointerup",onUp);
+  window.addEventListener("pointercancel",onCancel);
 }
 
 function dueChip(t,mine,onPick){
@@ -1060,6 +1362,8 @@ function dueChip(t,mine,onPick){
 
 function remRow(person,t,mine){
   var row=el("div","rem"+(t.done?" done":"")+(mine?"":" ro"));
+  row.dataset.id=t.id;row.dataset.group=t.group;
+  if(mine)row.appendChild(dragHandle(person,"task",t.id,row));
   var c=el(mine?"button":"span","check");
   if(mine){
     c.setAttribute("role","checkbox");
@@ -1088,9 +1392,9 @@ function remRow(person,t,mine){
   var main=el("div","rem-main");
   if(mine){
     var inp=document.createElement("input");
-    inp.className="txt";inp.value=t.text;inp.setAttribute("aria-label","Reminder");
+    inp.className="txt";inp.value=t.text;inp.setAttribute("aria-label","Task");
     inp.onkeydown=function(ev){
-      if(ev.key==="Enter"){ev.preventDefault();inp.blur();focusNew(person);}
+      if(ev.key==="Enter"){ev.preventDefault();inp.blur();focusNew(person,t.group);}
       if(ev.key==="Escape"){inp.value=t.text;inp.blur();}
     };
     inp.onchange=function(){
@@ -1112,14 +1416,16 @@ function remRow(person,t,mine){
   return row;
 }
 
-function newRow(person){
-  var dr=drafts[person]||(drafts[person]={due:"",set:false,text:""});
+function newRow(person,gid){
+  var dk=person+"|"+gid;
+  var dr=drafts[dk]||(drafts[dk]={due:"",set:false,text:""});
   var row=el("div","rem new");
+  row.dataset.group=gid;
   row.appendChild(el("span","check"));
   var main=el("div","rem-main");
   var inp=document.createElement("input");
-  inp.className="txt";inp.id="rem-new-"+person;inp.value=dr.text;
-  inp.placeholder="New reminder";inp.setAttribute("aria-label","New reminder");
+  inp.className="txt";inp.id=newRowId(person,gid);inp.value=dr.text;
+  inp.placeholder=gid?"Add task":"New task";inp.setAttribute("aria-label","New task");
   inp.setAttribute("enterkeyhint","done");
   main.appendChild(inp);
   var chipHost=el("span");
@@ -1141,17 +1447,17 @@ function newRow(person){
     ev.preventDefault();
     var ef=effective();
     if(!ef.text.trim())return;
-    addTask(person,ef.text,ef.due);
-    drafts[person]={due:"",set:false,text:""};
-    render();focusNew(person);
+    addTask(person,ef.text,ef.due,gid);
+    drafts[dk]={due:"",set:false,text:""};
+    render();focusNew(person,gid);
   };
   inp.onpaste=function(ev){
     var txt=(ev.clipboardData||window.clipboardData).getData("text");
     if(!txt||!/\n/.test(txt.trim()))return;
     ev.preventDefault();
-    txt.split(/\r?\n/).forEach(function(line){addTask(person,line.replace(/^\s*(?:[-*•]|\d+[.)]|\[[ x]?\])\s*/i,""),null);});
-    drafts[person]={due:"",set:false,text:""};
-    render();focusNew(person);
+    txt.split(/\r?\n/).forEach(function(line){addTask(person,line.replace(/^\s*(?:[-*•]|\d+[.)]|\[[ x]?\])\s*/i,""),null,gid);});
+    drafts[dk]={due:"",set:false,text:""};
+    render();focusNew(person,gid);
   };
   row.appendChild(main);
   return row;
@@ -1951,7 +2257,7 @@ function heatCard(series,dates){
 
 /* ---------------- undo / redo ----------------
    Snapshot-based: before the first change in a burst, the signed-in person's
-   entries and reminders are saved as they were. Typing coalesces into one step
+   entries and tasks are saved as they were. Typing coalesces into one step
    per pause; clicks, drags and checks are one step each. Only your own data is
    undoable, since that is all you can edit. */
 var undoStack=[],redoStack=[];
@@ -1976,7 +2282,7 @@ function syncUndoOwner(){
 }
 function typingNow(){
   var a=document.activeElement;
-  /* The new-reminder box only changes data on Enter, so each add is its own step. */
+  /* A new-task box only changes data on Enter, so each add is its own step. */
   if(a&&/^rem-new-/.test(a.id))return false;
   return !!(a&&(a.tagName==="TEXTAREA"||(a.tagName==="INPUT"&&/^(text|search|)$/.test(a.type))));
 }
