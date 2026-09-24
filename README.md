@@ -11,8 +11,8 @@ Live at **https://nliptas.pages.dev**
 - **Plan** — after 7pm the date defaults to tomorrow. Both schedules sit side by
   side; you edit yours, you can always see the other. Time blocks are free text
   (`10-1045`, `9-sleep`), the way the spreadsheet had them. Underneath is a
-  running Reminders list per person, with optional due dates, that carries over
-  day to day.
+  running task list per person that carries over day to day, with optional due
+  dates and nested groups (groups, subgroups, tasks at any level).
 - **Score hours** — 6am to 5am as a calendar column in 15-minute steps. Drag to
   paint signal, click a block to switch signal ↔ noise, Backspace to delete.
   Unscored time is left out of both sides of the ratio.

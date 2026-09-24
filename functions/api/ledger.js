@@ -6,8 +6,9 @@
  * ever writes their own keys, so the two of you never clobber each other —
  * only your own second tab can, and that is last-writer-wins by design.
  *
- * Reminders are one running list per person, not per day: `tasks:<person>`,
- * holding { items: [{ id, text, due, done, doneAt, createdAt }], migrated }.
+ * Tasks are one running list per person, not per day: `tasks:<person>`,
+ * holding { items: [{ id, text, due, done, doneAt, createdAt, group }],
+ * groups: [{ id, name, parent, collapsed }], migrated }.
  * Only the owner writes their list, so the whole list is replaced on save.
  *
  * Auth is a single shared passphrase in the LEDGER_KEY environment variable
@@ -21,6 +22,7 @@ const MAX_BLOCKS = 80;
 const MAX_TEXT = 240;
 const MAX_TASKS = 4000;
 const MAX_REMINDERS = 400;
+const MAX_GROUPS = 100;
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -69,8 +71,21 @@ function cleanReminders(v) {
       done: !!(t && t.done),
       doneAt: t && t.done ? str(t.doneAt, 40) : "",
       createdAt: str(t && t.createdAt, 40),
+      group: str(t && t.group, 40),
     }))
     .filter((t) => t.id && t.text);
+}
+
+function cleanGroups(v) {
+  if (!Array.isArray(v)) return [];
+  return v.slice(0, MAX_GROUPS)
+    .map((g) => ({
+      id: str(g && g.id, 40),
+      name: str(g && g.name, 80),
+      parent: str(g && g.parent, 40),
+      collapsed: !!(g && g.collapsed),
+    }))
+    .filter((g) => g.id);
 }
 
 async function readReminders(env) {
@@ -152,7 +167,7 @@ async function writeBatch(request, env) {
   for (const l of lists) {
     await env.LEDGER.put(
       `tasks:${l.person}`,
-      JSON.stringify({ items: cleanReminders(l.items), migrated: !!l.migrated, updatedAt: new Date().toISOString() }),
+      JSON.stringify({ items: cleanReminders(l.items), groups: cleanGroups(l.groups), migrated: !!l.migrated, updatedAt: new Date().toISOString() }),
     );
   }
   return json({ ok: true, groups: groups.size, lists: lists.length });
