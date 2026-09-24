@@ -4,16 +4,19 @@ Two people plan the next day the night before, then score every hour of the day
 that just ended as **signal**, **noise**, or **N/A**. The ratio is tracked over
 time so the accountability is quantitative, not vibes.
 
-Live at **https://nlimtas.pages.dev**
+Live at **https://nliptas.pages.dev**
 
 ## The system
 
 - **Plan** — after 7pm the date defaults to tomorrow. Both schedules sit side by
   side; you edit yours, you can always see the other. Time blocks are free text
-  (`10-1045`, `9-sleep`), the way the spreadsheet had them. Tasks go underneath.
-- **Score hours** — 6am to 3am, 21 cells. Tap cycles signal → noise → N/A →
-  blank. N/A (class, a commitment you couldn't move) is excluded from both sides
-  of the ratio, so it neither flatters nor punishes the number.
+  (`10-1045`, `9-sleep`), the way the spreadsheet had them. Underneath is a
+  running Reminders list per person, with optional due dates, that carries over
+  day to day.
+- **Score hours** — 6am to 5am as a calendar column in 15-minute steps. Drag to
+  paint signal, click a block to switch signal ↔ noise, Backspace to delete.
+  Unscored time is left out of both sides of the ratio.
+- **Undo** — ⌘Z / Ctrl+Z and ⇧⌘Z / Ctrl+Y undo and redo your own changes.
 - **History** — every day in reverse order with both hour strips and both scores.
 - **Analysis** — signal share per day, where the hours went, and which clock
   hours actually come out signal for each person.
@@ -47,9 +50,9 @@ connection costs nothing.
 ```sh
 npx wrangler login
 npx wrangler kv namespace create LEDGER      # put the id in wrangler.toml
-npx wrangler pages project create nlimtas --production-branch main
-npx wrangler pages secret put LEDGER_KEY --project-name nlimtas   # shared passphrase
-./build.sh && npx wrangler pages deploy public --project-name nlimtas
+npx wrangler pages project create nliptas --production-branch main
+npx wrangler pages secret put LEDGER_KEY --project-name nliptas   # shared passphrase
+./build.sh && npx wrangler pages deploy public --project-name nliptas
 ```
 
 `LEDGER_KEY` is the shared passphrase the site asks for once per device. It
@@ -59,5 +62,5 @@ anyone who finds the URL.
 ## Deploying an update
 
 ```sh
-./build.sh && npx wrangler pages deploy public --project-name nlimtas
+./build.sh && npx wrangler pages deploy public --project-name nliptas
 ```

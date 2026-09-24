@@ -6,6 +6,10 @@
  * ever writes their own keys, so the two of you never clobber each other —
  * only your own second tab can, and that is last-writer-wins by design.
  *
+ * Reminders are one running list per person, not per day: `tasks:<person>`,
+ * holding { items: [{ id, text, due, done, doneAt, createdAt }], migrated }.
+ * Only the owner writes their list, so the whole list is replaced on save.
+ *
  * Auth is a single shared passphrase in the LEDGER_KEY environment variable
  * (set with `wrangler pages secret put LEDGER_KEY`). It never lives in this
  * repo. With LEDGER_KEY unset the API is open, which is fine locally and is
@@ -16,6 +20,7 @@ const PEOPLE = ["nathan", "karan"];
 const MAX_BLOCKS = 80;
 const MAX_TEXT = 240;
 const MAX_TASKS = 4000;
+const MAX_REMINDERS = 400;
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -45,11 +50,35 @@ function cleanBlocks(v) {
 function cleanHours(v) {
   const out = {};
   if (!v || typeof v !== "object") return out;
+  // Keys are 15-minute slots, "H:MM" with H 0-23 and MM 00/15/30/45.
   for (const k of Object.keys(v)) {
-    const h = Number(k);
-    if (!Number.isInteger(h) || h < 0 || h > 23) continue;
-    if (v[k] === "s" || v[k] === "n" || v[k] === "x") out[h] = v[k];
+    const m = /^(\d{1,2}):(00|15|30|45)$/.exec(k);
+    if (!m || Number(m[1]) > 23) continue;
+    if (v[k] === "s" || v[k] === "n") out[k] = v[k];
   }
+  return out;
+}
+
+function cleanReminders(v) {
+  if (!Array.isArray(v)) return [];
+  return v.slice(0, MAX_REMINDERS)
+    .map((t) => ({
+      id: str(t && t.id, 40),
+      text: str(t && t.text, 500).trim(),
+      due: /^\d{4}-\d{2}-\d{2}$/.test((t && t.due) || "") ? t.due : "",
+      done: !!(t && t.done),
+      doneAt: t && t.done ? str(t.doneAt, 40) : "",
+      createdAt: str(t && t.createdAt, 40),
+    }))
+    .filter((t) => t.id && t.text);
+}
+
+async function readReminders(env) {
+  const out = {};
+  const docs = await Promise.all(PEOPLE.map((p) => env.LEDGER.get(`tasks:${p}`, "json")));
+  PEOPLE.forEach((p, i) => {
+    if (docs[i]) out[p] = docs[i];
+  });
   return out;
 }
 
@@ -89,8 +118,12 @@ async function writeBatch(request, env) {
     return json({ error: "bad_json" }, 400);
   }
   const items = Array.isArray(body && body.entries) ? body.entries : [];
-  if (!items.length) return json({ error: "no_entries" }, 400);
+  const lists = Array.isArray(body && body.tasks) ? body.tasks : [];
+  if (!items.length && !lists.length) return json({ error: "no_entries" }, 400);
   if (items.length > 120) return json({ error: "too_many_entries" }, 400);
+  for (const l of lists) {
+    if (!l || !PEOPLE.includes(l.person)) return json({ error: "unknown_person" }, 400);
+  }
 
   const groups = new Map();
   for (const it of items) {
@@ -116,14 +149,23 @@ async function writeBatch(request, env) {
     }
     await env.LEDGER.put(name, JSON.stringify(doc));
   }
-  return json({ ok: true, groups: groups.size });
+  for (const l of lists) {
+    await env.LEDGER.put(
+      `tasks:${l.person}`,
+      JSON.stringify({ items: cleanReminders(l.items), migrated: !!l.migrated, updatedAt: new Date().toISOString() }),
+    );
+  }
+  return json({ ok: true, groups: groups.size, lists: lists.length });
 }
 
 export async function onRequest({ request, env }) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
   if (!env.LEDGER) return json({ error: "kv_unbound" }, 503);
   if (!authorized(request, env)) return json({ error: "unauthorized" }, 401);
-  if (request.method === "GET") return json({ entries: await readAll(env) });
+  if (request.method === "GET") {
+    const [entries, tasks] = await Promise.all([readAll(env), readReminders(env)]);
+    return json({ entries, tasks });
+  }
   if (request.method === "POST") return writeBatch(request, env);
   return json({ error: "method_not_allowed" }, 405);
 }
