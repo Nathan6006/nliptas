@@ -16,7 +16,7 @@ mkdir -p public
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Plan the next day, score every 15 minutes from 6am to 5am as signal or noise, and track the ratio over time.">
+<meta name="description" content="Plan the next day, score every 15 minutes from 6am to 6am as signal or noise, and track the ratio over time.">
 <meta name="color-scheme" content="light dark">
 <style>
 :root{color-scheme:light dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
