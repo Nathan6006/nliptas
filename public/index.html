@@ -212,6 +212,7 @@ textarea:focus{border-color:var(--line-2);background:var(--panel);outline:none}
 .swatch{width:13px;height:13px;border-radius:4px;border:1px solid var(--line-2);display:grid;place-items:center;font-family:var(--f-mono);font-size:8px;font-weight:700;color:#fff}
 .score{display:flex;align-items:baseline;gap:6px}
 .score .big{font-family:var(--f-disp);font-size:26px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.score .chip.hrs{font-size:14px;padding:3px 10px}
 .chip{font-family:var(--f-mono);font-size:11px;padding:2px 7px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-2);white-space:nowrap}
 
 /* ---- history ---- */
@@ -223,7 +224,7 @@ textarea:focus{border-color:var(--line-2);background:var(--panel);outline:none}
 .hdate{font-family:var(--f-disp);font-weight:700;font-size:14.5px}
 .hdate small{display:block;font-family:var(--f-mono);font-weight:400;font-size:10.5px;color:var(--ink-3)}
 .hpair{display:flex;flex-direction:column;gap:6px;min-width:0}
-.hline{display:grid;grid-template-columns:62px 1fr 86px;gap:9px;align-items:center}
+.hline{display:grid;grid-template-columns:62px 1fr 152px;gap:9px;align-items:center}
 .strip{display:grid;grid-template-columns:repeat(96,1fr);height:13px;border-radius:3px;overflow:hidden;border:1px solid var(--line);background:repeating-linear-gradient(to right,transparent 0 calc(100%/24 - 1px),var(--line) calc(100%/24 - 1px) calc(100%/24)),var(--panel-2)}
 .strip i.s{background:var(--signal)}
 .strip i.n{background:var(--noise)}
@@ -848,8 +849,7 @@ function scoreLine(t){
   var big=el("span","big",p===null?"—":p+"%");
   big.style.color=p===null?"var(--ink-3)":(p>=50?"var(--signal)":"var(--noise)");
   d.appendChild(big);
-  d.appendChild(el("span","chip",ratioText(t)+" S:N"));
-  d.appendChild(el("span","chip",fmtH(t.s)+"h S · "+fmtH(t.n)+"h N"));
+  d.appendChild(el("span","chip hrs",fmtH(t.s)+"h S · "+fmtH(t.n)+"h N"));
   return d;
 }
 
@@ -1788,7 +1788,7 @@ function historyView(){
       });
       line.appendChild(strip);
       var pv=pct(t);
-      var chip=el("div","chip",pv===null?"not scored":pv+"% · "+ratioText(t));
+      var chip=el("div","chip",pv===null?"not scored":pv+"% · "+fmtH(t.s)+"h S · "+fmtH(t.n)+"h N");
       if(pv!==null){chip.style.color=pv>=50?"var(--signal)":"var(--noise)";}
       line.appendChild(chip);
       pair.appendChild(line);
