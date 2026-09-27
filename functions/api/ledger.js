@@ -2,13 +2,14 @@
  * Shared ledger API for Signal Ledger, on Cloudflare Pages Functions + KV.
  *
  * One KV key per person per month: `ledger:<person>:<YYYY-MM>`, holding
- * { "<YYYY-MM-DD>": { blocks, tasks, hours, updatedAt } }. Each person only
+ * { "<YYYY-MM-DD>": { blocks, tasks, hours, areas, updatedAt } }. `areas` maps a
+ * signal slot to what it was spent on. Each person only
  * ever writes their own keys, so the two of you never clobber each other —
  * only your own second tab can, and that is last-writer-wins by design.
  *
  * Tasks are one running list per person, not per day: `tasks:<person>`,
  * holding { items: [{ id, text, due, done, doneAt, createdAt, group }],
- * groups: [{ id, name, parent, collapsed }], migrated }.
+ * groups: [{ id, name, parent, collapsed }], migrated, areas: [{ name, uses }] }.
  * Only the owner writes their list, so the whole list is replaced on save.
  *
  * Auth is a single shared passphrase in the LEDGER_KEY environment variable
@@ -23,6 +24,7 @@ const MAX_TEXT = 240;
 const MAX_TASKS = 4000;
 const MAX_REMINDERS = 400;
 const MAX_GROUPS = 100;
+const MAX_AREAS = 200;
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -57,6 +59,30 @@ function cleanHours(v) {
     const m = /^(\d{1,2}):(00|15|30|45)$/.exec(k);
     if (!m || Number(m[1]) > 23) continue;
     if (v[k] === "s" || v[k] === "n") out[k] = v[k];
+  }
+  return out;
+}
+
+// Slot -> area name, kept only on slots that are signal.
+function cleanSlotAreas(v, hours) {
+  const out = {};
+  if (!v || typeof v !== "object") return out;
+  for (const k of Object.keys(v)) {
+    const n = str(v[k], 60).trim();
+    if (n && hours[k] === "s") out[k] = n;
+  }
+  return out;
+}
+
+function cleanAreaList(v) {
+  if (!Array.isArray(v)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const a of v.slice(0, MAX_AREAS)) {
+    const name = str(a && a.name, 60).trim();
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    out.push({ name, uses: Math.max(0, Math.floor(Number(a.uses) || 0)) });
   }
   return out;
 }
@@ -119,6 +145,7 @@ async function readAll(env) {
         blocks: e.blocks || [],
         tasks: e.tasks || "",
         hours: e.hours || {},
+        areas: e.areas || {},
       };
     }
   });
@@ -155,10 +182,12 @@ async function writeBatch(request, env) {
     const doc = (await env.LEDGER.get(name, "json")) || {};
     const stamp = new Date().toISOString();
     for (const it of list) {
+      const hours = cleanHours(it.hours);
       doc[it.date] = {
         blocks: cleanBlocks(it.blocks),
         tasks: str(it.tasks, MAX_TASKS),
-        hours: cleanHours(it.hours),
+        hours,
+        areas: cleanSlotAreas(it.areas, hours),
         updatedAt: stamp,
       };
     }
@@ -167,7 +196,7 @@ async function writeBatch(request, env) {
   for (const l of lists) {
     await env.LEDGER.put(
       `tasks:${l.person}`,
-      JSON.stringify({ items: cleanReminders(l.items), groups: cleanGroups(l.groups), migrated: !!l.migrated, updatedAt: new Date().toISOString() }),
+      JSON.stringify({ items: cleanReminders(l.items), groups: cleanGroups(l.groups), migrated: !!l.migrated, areas: cleanAreaList(l.areas), updatedAt: new Date().toISOString() }),
     );
   }
   return json({ ok: true, groups: groups.size, lists: lists.length });
