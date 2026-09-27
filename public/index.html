@@ -225,9 +225,12 @@ textarea:focus{border-color:var(--line-2);background:var(--panel);outline:none}
 .evt .del{display:none;position:absolute;top:50%;right:4px;transform:translateY(-50%);width:20px;height:20px;border:0;border-radius:50%;background:var(--ink);color:var(--bg);font-size:13px;line-height:1;cursor:pointer;padding:0;z-index:3}
 .evt.sel .del{display:grid;place-items:center}
 .evt.tiny .del{width:16px;height:16px;font-size:11px}
-.evt .lab{display:none;position:absolute;top:50%;right:28px;transform:translateY(-50%);height:20px;padding:0 8px;border:0;border-radius:10px;background:var(--panel);color:var(--ink);font-size:11.5px;line-height:1;cursor:pointer;z-index:3;box-shadow:0 0 0 1px var(--line-2)}
-.evt.sel .lab{display:grid;place-items:center}
-.evt.tiny .lab{height:16px;right:22px;font-size:10.5px;padding:0 6px}
+.evt .lab{align-self:flex-start;flex:none;max-width:calc(100% - 56px);height:19px;padding:0 8px;border:1px solid color-mix(in srgb,var(--signal) 45%,transparent);border-radius:10px;background:color-mix(in srgb,var(--panel) 70%,transparent);color:inherit;font:inherit;font-size:12px;font-weight:600;line-height:17px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;position:relative;z-index:2}
+.evt .lab:hover{background:var(--panel)}
+.evt .lab.empty{font-weight:400;border-style:dashed;opacity:.8}
+.evt.tiny .lab{position:absolute;left:6px;top:50%;transform:translateY(-50%);height:15px;line-height:13px;font-size:10.5px;padding:0 6px}
+.evt .split{display:none;position:absolute;top:50%;right:28px;transform:translateY(-50%);width:20px;height:20px;border:0;border-radius:50%;background:var(--panel);color:var(--ink);box-shadow:0 0 0 1px var(--line-2);font-size:11px;line-height:1;cursor:pointer;padding:0;z-index:3}
+.evt.sel .split{display:grid;place-items:center}
 .evt b{font-weight:600}
 .evt .when{font-family:var(--f-mono);font-size:10.5px;opacity:.85}
 .evt.one{flex-direction:row;align-items:center;gap:8px;padding-block:0}
@@ -383,7 +386,7 @@ var tasksLoaded=false;
 var entriesLoaded=false;
 
 function key(date,person){return date+"__"+person;}
-function blank(date,person){return{date:date,person:person,blocks:[],tasks:"",hours:{},areas:{}};}
+function blank(date,person){return{date:date,person:person,blocks:[],tasks:"",hours:{},areas:{},segs:{}};}
 /* Older entries rated whole hours (key "9") and had an N/A mark. Spread each
    hour over its four quarters and drop N/A, which now just means blank. */
 function normHours(h){
@@ -404,7 +407,15 @@ function normAreas(a,hours){
   for(var k in a){if(hours[k]==="s"&&typeof a[k]==="string"&&a[k].trim())out[k]=a[k].trim().slice(0,60);}
   return out;
 }
-function normAll(o){for(var id in o){if(o[id]){o[id].hours=normHours(o[id].hours);o[id].areas=normAreas(o[id].areas,o[id].hours);}}return o;}
+/* Which block a slot belongs to: slot -> short id, so blocks drawn next to
+   each other stay separate. Slots without one (older data) join up by mark. */
+function normSegs(g,hours){
+  var out={};
+  if(!g||typeof g!=="object")return out;
+  for(var k in g){if(hours[k]&&typeof g[k]==="string"&&/^[a-z0-9]{1,12}$/.test(g[k]))out[k]=g[k];}
+  return out;
+}
+function normAll(o){for(var id in o){if(o[id]){o[id].hours=normHours(o[id].hours);o[id].areas=normAreas(o[id].areas,o[id].hours);o[id].segs=normSegs(o[id].segs,o[id].hours);}}return o;}
 function getEntry(date,person){return entries[key(date,person)]||null;}
 function ensure(date,person){
   var id=key(date,person);
@@ -560,7 +571,7 @@ function payloadFor(ids){
   ids.forEach(function(id){
     var e=entries[id];
     if(!e||!e.date||!e.person)return;
-    out.push({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{}});
+    out.push({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{},segs:e.segs||{}});
   });
   return out;
 }
@@ -577,7 +588,7 @@ function flush(){
     ids.forEach(function(id){
       var e=entries[id];
       if(!e)return;
-      ops.push(function(){return db.collection("entries").doc(id).set({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{},updatedAt:new Date().toISOString()});});
+      ops.push(function(){return db.collection("entries").doc(id).set({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{},segs:e.segs||{},updatedAt:new Date().toISOString()});});
     });
     who.forEach(function(p){
       ops.push(function(){return db.collection("tasks").doc(p).set({items:tasks[p].items,groups:tasks[p].groups,migrated:tasks[p].migrated,areas:tasks[p].areas,updatedAt:new Date().toISOString()});});
@@ -643,7 +654,7 @@ function connectClaude(){
       var v=d.data()||{};
       fresh[d.id]={date:v.date||d.id.split("__")[0],person:v.person||d.id.split("__")[1],
         blocks:Array.isArray(v.blocks)?v.blocks:[],tasks:typeof v.tasks==="string"?v.tasks:"",
-        hours:v.hours&&typeof v.hours==="object"?v.hours:{},areas:v.areas&&typeof v.areas==="object"?v.areas:{}};
+        hours:v.hours&&typeof v.hours==="object"?v.hours:{},areas:v.areas&&typeof v.areas==="object"?v.areas:{},segs:v.segs&&typeof v.segs==="object"?v.segs:{}};
     });
     adopt(fresh);
   },function(err){setNote(err&&err.code==="revoked"?"sync stopped":"offline — changes kept locally");});
@@ -1588,7 +1599,7 @@ function scorePane(p){
 
   var body=el("div","pane-body");
   body.appendChild(dayColumn(date,p.k,mine));
-  if(mine)body.appendChild(el("div","empty",(matchMedia("(pointer:coarse)").matches?"Press and hold, then drag":"Drag")+" to mark signal, in 15-minute steps. Click a block to switch signal ↔ noise; Backspace (or ×) deletes the selected block. Drag it to move, or its edges to resize."));
+  if(mine)body.appendChild(el("div","empty",(matchMedia("(pointer:coarse)").matches?"Press and hold, then drag":"Drag")+" to mark signal, in 15-minute steps. Click a block to switch signal ↔ noise; Backspace (or ×) deletes the selected block. Drag it to move, or its edges to resize; ✂ splits it in two, and the label chip says what it was."));
 
   var e=getEntry(date,p.k);
   if(e&&e.blocks.length){
@@ -1630,20 +1641,33 @@ function runAt(runs,i){for(var k=0;k<runs.length;k++)if(i>=runs[k].a&&i<=runs[k]
 function spanText(a,b){return slotLabel(a)+" – "+slotLabel(b+1);}
 function withoutRun(hours,r){var h=Object.assign({},hours);for(var k=r.a;k<=r.b;k++)delete h[SLOTS[k]];return h;}
 function fill(hours,a,b,v){for(var k=Math.min(a,b);k<=Math.max(a,b);k++)hours[SLOTS[k]]=v;return hours;}
-/* Inside the day column a signal slot with an area reads "s:<area>", so blocks
-   split where the area changes and moves/resizes carry the area along. */
+/* Inside the day column each slot reads "<mark>|<block id>|<area>", so a block
+   is a run of identical values: blocks never merge with their neighbours, and
+   moves/resizes carry the id and area along. */
+function mk(kind,id,area){return kind+"|"+(id||"")+"|"+(kind==="s"&&area?area:"");}
+function parseV(v){
+  if(v.length<2)return{kind:v,id:"",area:""};
+  var i=v.indexOf("|",2);
+  return{kind:v.charAt(0),id:v.slice(2,i),area:v.slice(i+1)};
+}
 function combined(e){
   var h={};if(!e)return h;
-  for(var k in e.hours){var v=e.hours[k];h[k]=v==="s"&&e.areas&&e.areas[k]?"s:"+e.areas[k]:v;}
+  for(var k in e.hours)h[k]=mk(e.hours[k],e.segs&&e.segs[k],e.areas&&e.areas[k]);
   return h;
 }
 function splitCombined(c){
-  var hours={},areas={};
-  for(var k in c){var v=c[k];hours[k]=v.charAt(0);if(v.length>2)areas[k]=v.slice(2);}
-  return{hours:hours,areas:areas};
+  var hours={},areas={},segs={};
+  for(var k in c){
+    var p=parseV(c[k]);
+    hours[k]=p.kind;
+    if(p.id)segs[k]=p.id;
+    if(p.area&&p.kind==="s")areas[k]=p.area;
+  }
+  return{hours:hours,areas:areas,segs:segs};
 }
 function kindOf(v){return v.charAt(0);}
-function areaOf(v){return v.length>2?v.slice(2):"";}
+function areaOf(v){return parseV(v).area;}
+function sid(){return Math.random().toString(36).slice(2,8)||"b";}
 
 /* The block last clicked, drawn or moved is selected: Backspace/Delete (or its
    × button, for touch) removes it. Kept as a slot so it survives re-renders. */
@@ -1660,21 +1684,29 @@ function drawRuns(col,hours,editable,onCycle,selSlot){
     var b=el("div","evt "+kind+(len===1?" tiny":len<4?" one":"")+(isSel?" sel":""));
     b.style.top="calc("+r.a+" * var(--hh) / 4 + 1px)";
     b.style.height="calc("+len+" * var(--hh) / 4 - 2px)";
-    b.appendChild(el("b",null,area||STATE_LABEL[kind]));
+    b.dataset.a=r.a;
+    if(kind==="s"&&editable){
+      /* Always-there label chip: the area, or a placeholder to add one. */
+      var lb=el("button","lab"+(area?"":" empty"),area||"+ Label");
+      lb.title=area?"Change label":"What was this?";lb.setAttribute("aria-label",area?"Label: "+area+". Change it":"Add a label");lb.tabIndex=-1;
+      b.appendChild(lb);
+    }else b.appendChild(el("b",null,area||STATE_LABEL[kind]));
     b.appendChild(el("span","when",spanText(r.a,r.b)+" · "+fmtDur(len)));
     b.title=name+", "+spanText(r.a,r.b);
     if(editable){
       b.tabIndex=0;b.setAttribute("role","button");
-      b.setAttribute("aria-label",name+", "+spanText(r.a,r.b)+". Enter switches signal and noise; L labels it; Backspace deletes.");
+      b.setAttribute("aria-label",name+", "+spanText(r.a,r.b)+". Enter switches signal and noise; L labels it; S splits it; Backspace deletes.");
       b.onkeydown=function(ev){
         if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();onCycle(r);}
-        else if((ev.key==="l"||ev.key==="L")&&kind==="s"&&isSel&&!ev.metaKey&&!ev.ctrlKey){ev.preventDefault();openAreaMenu(sel.date,sel.person,sel.slot);}
+        else if(ev.metaKey||ev.ctrlKey||ev.altKey||!isSel)return;
+        else if((ev.key==="l"||ev.key==="L")&&kind==="s"){ev.preventDefault();openAreaMenu(sel.date,sel.person,sel.slot);}
+        else if((ev.key==="s"||ev.key==="S")&&len>1){ev.preventDefault();onCycle(r,"split");}
       };
       var t=el("div","grip top");t.dataset.edge="top";b.appendChild(t);
       var bt=el("div","grip bot");bt.dataset.edge="bot";b.appendChild(bt);
-      if(isSel&&kind==="s"){
-        var lb=el("button","lab",area?"✎":"Label");lb.title="What was this?";lb.setAttribute("aria-label","Label what this signal was");lb.tabIndex=-1;
-        b.appendChild(lb);
+      if(isSel&&len>1){
+        var sp=el("button","split","✂");sp.title="Split in two";sp.setAttribute("aria-label","Split block in two");sp.tabIndex=-1;
+        b.appendChild(sp);
       }
       if(isSel){
         var x=el("button","del","×");x.title="Delete block";x.setAttribute("aria-label","Delete block");x.tabIndex=-1;
@@ -1702,17 +1734,29 @@ function dayColumn(date,person,editable){
 
   function commit(next){
     var en=ensure(date,person),sp=splitCombined(next);
-    en.hours=sp.hours;en.areas=sp.areas;
+    en.hours=sp.hours;en.areas=sp.areas;en.segs=sp.segs;
     markDirty(key(date,person));
     render();
   }
   function select(slot){sel={date:date,person:person,slot:slot};}
   /* New signal asks what it was spent on. */
   function commitSignal(next,slot){select(slot);commit(next);openAreaMenu(date,person,slot);}
-  function cycle(r){
-    if(kindOf(r.v)==="n"){commitSignal(fill(withoutRun(hours,r),r.a,r.b,"s"),r.a);return;}
+  function cycle(r,how){
+    if(how==="split"){split(r);return;}
+    var p=parseV(r.v);
+    if(p.kind==="n"){commitSignal(fill(withoutRun(hours,r),r.a,r.b,mk("s",p.id||sid(),"")),r.a);return;}
     select(r.a);
-    commit(fill(withoutRun(hours,r),r.a,r.b,"n"));
+    commit(fill(withoutRun(hours,r),r.a,r.b,mk("n",p.id||sid(),"")));
+  }
+  /* Halve a block (on a 15-minute line) so each part can be labeled or
+     marked on its own; the lower half is selected. */
+  function split(r){
+    if(r.b<=r.a)return;
+    var p=parseV(r.v),mid=r.a+Math.ceil((r.b-r.a+1)/2);
+    var next=fill(Object.assign({},hours),r.a,mid-1,mk(p.kind,p.id||sid(),p.area));
+    fill(next,mid,r.b,mk(p.kind,sid(),p.area));
+    select(mid);
+    commit(next);
   }
   var selSlot=sel&&sel.date===date&&sel.person===person?sel.slot:null;
   drawRuns(col,hours,editable,cycle,selSlot);
@@ -1732,8 +1776,15 @@ function dayColumn(date,person,editable){
   }
   function preview(d){
     var h;
-    if(d.mode==="paint")h=fill(Object.assign({},hours),d.start,d.cur,"s");
-    else if(d.mode==="resize")h=fill(withoutRun(hours,d.run),d.anchor,d.cur,d.run.v);
+    if(d.mode==="paint")h=fill(Object.assign({},hours),d.start,d.cur,mk("s",d.nid,""));
+    else if(d.mode==="resize"){
+      h=fill(withoutRun(hours,d.run),d.anchor,d.cur,d.run.v);
+      /* A block touching this one takes over whatever this one gives up, so
+         dragging the line between two blocks moves the line. */
+      var lo=Math.min(d.anchor,d.cur),hi=Math.max(d.anchor,d.cur),k;
+      if(d.up)for(k=d.run.a;k<lo;k++)h[SLOTS[k]]=d.up;
+      if(d.dn)for(k=hi+1;k<=d.run.b;k++)h[SLOTS[k]]=d.dn;
+    }
     else{
       var len=d.run.b-d.run.a+1;
       var a=Math.max(0,Math.min(SLOTS.length-len,d.run.a+d.cur-d.start));
@@ -1782,7 +1833,7 @@ function dayColumn(date,person,editable){
       /* A tap on empty space drops in an hour, stopping short of the next block. */
       var end=d.start;
       while(end-d.start<3&&end+1<SLOTS.length&&!hours[SLOTS[end+1]])end++;
-      commitSignal(fill(Object.assign({},hours),d.start,end,"s"),d.start);
+      commitSignal(fill(Object.assign({},hours),d.start,end,mk("s",d.nid,"")),d.start);
     }
   }
   function onCancel(){stop();drawRuns(col,hours,true,cycle);}
@@ -1790,13 +1841,25 @@ function dayColumn(date,person,editable){
   col.addEventListener("pointerdown",function(ev){
     if(ev.button!==0||drag)return;
     if(ev.target.closest&&ev.target.closest(".del")){ev.preventDefault();if(selDelete)selDelete();return;}
-    if(ev.target.closest&&ev.target.closest(".lab")){ev.preventDefault();ev.stopPropagation();openAreaMenu(date,person,selSlot);return;}
+    var btn=ev.target.closest&&ev.target.closest(".lab,.split");
+    if(btn){
+      ev.preventDefault();ev.stopPropagation();
+      var at=+btn.closest(".evt").dataset.a,hit=runAt(runsOf(hours),at);
+      if(!hit)return;
+      if(btn.classList.contains("split")){split(hit);return;}
+      select(at);render();openAreaMenu(date,person,at);return;
+    }
     var i=idxAt(ev.clientY);
     var run=runAt(runsOf(hours),i);
     var grip=ev.target.closest&&ev.target.closest(".grip");
     var d={id:ev.pointerId,start:i,cur:i,run:run,moved:false,x0:ev.clientX,y0:ev.clientY,armed:false,
-      mode:run?(grip?"resize":"move"):"paint"};
-    if(d.mode==="resize")d.anchor=grip.dataset.edge==="top"?run.b:run.a;
+      mode:run?(grip?"resize":"move"):"paint",nid:sid()};
+    if(d.mode==="resize"){
+      var top=grip.dataset.edge==="top";
+      d.anchor=top?run.b:run.a;
+      if(top&&run.a>0)d.up=hours[SLOTS[run.a-1]]||"";
+      if(!top&&run.b<SLOTS.length-1)d.dn=hours[SLOTS[run.b+1]]||"";
+    }
     drag=d;
     window.addEventListener("pointermove",onMove);
     window.addEventListener("pointerup",onUp);
@@ -1832,8 +1895,8 @@ function tagRun(date,person,slot,name){
   var r=runAt(runsOf(c),slot);
   if(!r||kindOf(r.v)!=="s")return;
   if(name){name=useArea(person,name);markTasksDirty(person);}
-  var sp=splitCombined(fill(c,r.a,r.b,name?"s:"+name:"s"));
-  en.hours=sp.hours;en.areas=sp.areas;
+  var sp=splitCombined(fill(c,r.a,r.b,mk("s",parseV(r.v).id||sid(),name)));
+  en.hours=sp.hours;en.areas=sp.areas;en.segs=sp.segs;
   markDirty(key(date,person));
   sel={date:date,person:person,slot:slot};
   render();

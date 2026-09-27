@@ -2,8 +2,9 @@
  * Shared ledger API for Signal Ledger, on Cloudflare Pages Functions + KV.
  *
  * One KV key per person per month: `ledger:<person>:<YYYY-MM>`, holding
- * { "<YYYY-MM-DD>": { blocks, tasks, hours, areas, updatedAt } }. `areas` maps a
- * signal slot to what it was spent on. Each person only
+ * { "<YYYY-MM-DD>": { blocks, tasks, hours, areas, segs, updatedAt } }. `areas`
+ * maps a signal slot to what it was spent on; `segs` maps a slot to the id of
+ * the block it belongs to, so adjacent blocks stay separate. Each person only
  * ever writes their own keys, so the two of you never clobber each other —
  * only your own second tab can, and that is last-writer-wins by design.
  *
@@ -70,6 +71,15 @@ function cleanSlotAreas(v, hours) {
   for (const k of Object.keys(v)) {
     const n = str(v[k], 60).trim();
     if (n && hours[k] === "s") out[k] = n;
+  }
+  return out;
+}
+
+function cleanSegs(v, hours) {
+  const out = {};
+  if (!v || typeof v !== "object") return out;
+  for (const k of Object.keys(v)) {
+    if (hours[k] && typeof v[k] === "string" && /^[a-z0-9]{1,12}$/.test(v[k])) out[k] = v[k];
   }
   return out;
 }
@@ -146,6 +156,7 @@ async function readAll(env) {
         tasks: e.tasks || "",
         hours: e.hours || {},
         areas: e.areas || {},
+        segs: e.segs || {},
       };
     }
   });
@@ -188,6 +199,7 @@ async function writeBatch(request, env) {
         tasks: str(it.tasks, MAX_TASKS),
         hours,
         areas: cleanSlotAreas(it.areas, hours),
+        segs: cleanSegs(it.segs, hours),
         updatedAt: stamp,
       };
     }
