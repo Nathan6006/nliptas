@@ -15,6 +15,8 @@ Live at **https://nliptas.pages.dev**
   dates and nested groups (groups, subgroups, tasks at any level).
 - **Score hours** — 6am to 6am as a calendar column in 15-minute steps. Drag to
   paint signal, click a block to switch signal ↔ noise, Backspace to delete.
+  Blocks stay as drawn (neighbours never merge); ✂ splits one in two, and
+  dragging the line between two touching blocks moves it.
   Unscored time is left out of both sides of the ratio.
   Marking time signal pops up a menu asking what it was; the menu remembers
   everything you've typed into it, most-used first, and × drops an option.
