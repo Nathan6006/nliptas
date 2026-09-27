@@ -126,6 +126,32 @@ button.due:hover{background:var(--panel-2);color:var(--ink)}
 .duemenu label{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 10px;font-size:13.5px;border-top:1px solid var(--line);margin-top:4px;padding-top:9px}
 .duemenu input[type=date]{border:1px solid var(--line-2);background:var(--panel-2);border-radius:7px;padding:4px 6px;font:inherit;font-size:13px;color:var(--ink)}
 .duemenu .clear{color:var(--noise)}
+.areamenu{width:250px;max-width:calc(100vw - 16px)}
+.am-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:5px 8px 6px;font-size:13.5px}
+.am-head span{font-family:var(--f-mono);font-size:11px;color:var(--ink-3)}
+.am-in{margin:0 3px 5px;border:1px solid var(--line-2);background:var(--panel-2);border-radius:7px;padding:6px 9px;font:inherit;font-size:13.5px;color:var(--ink)}
+.am-in:focus{outline:2px solid color-mix(in srgb,var(--signal) 45%,transparent);outline-offset:0}
+.am-list{display:flex;flex-direction:column;max-height:260px;overflow:auto}
+.am-opt{display:flex;align-items:center;border-radius:7px}
+.am-opt.hi,.am-opt:hover{background:var(--panel-2)}
+.am-opt .am-name{flex:1;min-width:0;background:none}
+.am-opt .am-name span{font-family:inherit;font-size:13.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.am-opt .am-name i{font-style:normal;font-family:var(--f-mono);font-size:11px;color:var(--ink-3)}
+.am-opt.cur .am-name span{font-weight:600;color:var(--signal)}
+.am-opt.add .am-name span{color:var(--signal)}
+.duemenu .am-x{flex:none;padding:4px 8px;color:var(--ink-3);font-size:15px;line-height:1;opacity:0}
+.am-opt:hover .am-x,.am-opt.hi .am-x,.am-x:focus-visible{opacity:1}
+@media (pointer:coarse){.duemenu .am-x{opacity:1}}
+.duemenu .am-x:hover{color:var(--noise);background:none}
+.am-empty{padding:6px 10px 8px;font-size:12.5px;color:var(--ink-3)}
+.area-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px 28px}
+.area-tot{margin-left:auto;font-family:var(--f-mono);font-size:11.5px;color:var(--ink-3)}
+.area-row{display:grid;grid-template-columns:minmax(70px,34%) 1fr auto;align-items:center;gap:10px;padding:3px 0;font-size:13px}
+.area-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.area-row.none .area-name{color:var(--ink-3);font-style:italic}
+.area-bar{height:10px;border-radius:5px;background:var(--panel-2);overflow:hidden}
+.area-bar i{display:block;height:100%;border-radius:5px;background:color-mix(in srgb,var(--signal) 35%,var(--panel-2))}
+.area-num{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-2);white-space:nowrap}
 /* ---- task groups ---- */
 .grp{display:flex;flex-direction:column}
 .grp-head{display:flex;align-items:center;gap:4px;padding:12px 0 5px;border-bottom:1px solid var(--line)}
@@ -186,6 +212,9 @@ textarea:focus{border-color:var(--line-2);background:var(--panel);outline:none}
 .evt .del{display:none;position:absolute;top:50%;right:4px;transform:translateY(-50%);width:20px;height:20px;border:0;border-radius:50%;background:var(--ink);color:var(--bg);font-size:13px;line-height:1;cursor:pointer;padding:0;z-index:3}
 .evt.sel .del{display:grid;place-items:center}
 .evt.tiny .del{width:16px;height:16px;font-size:11px}
+.evt .lab{display:none;position:absolute;top:50%;right:28px;transform:translateY(-50%);height:20px;padding:0 8px;border:0;border-radius:10px;background:var(--panel);color:var(--ink);font-size:11.5px;line-height:1;cursor:pointer;z-index:3;box-shadow:0 0 0 1px var(--line-2)}
+.evt.sel .lab{display:grid;place-items:center}
+.evt.tiny .lab{height:16px;right:22px;font-size:10.5px;padding:0 6px}
 .evt b{font-weight:600}
 .evt .when{font-family:var(--f-mono);font-size:10.5px;opacity:.85}
 .evt.one{flex-direction:row;align-items:center;gap:8px;padding-block:0}
@@ -330,15 +359,16 @@ var saveTimer=null;
 
 /* Tasks: one running list per person, independent of the day, in nested groups.
    tasks[person] = {items:[{id,text,due,done,doneAt,createdAt,group}],
-                    groups:[{id,name,parent,collapsed}], migrated} */
+                    groups:[{id,name,parent,collapsed}], migrated,
+                    areas:[{name,uses}]}   <- the "what was this signal?" menu */
 var tasks={};
-PEOPLE.forEach(function(p){tasks[p.k]={items:[],groups:[],migrated:false};});
+PEOPLE.forEach(function(p){tasks[p.k]={items:[],groups:[],migrated:false,areas:[]};});
 var tasksDirty={};
 var tasksLoaded=false;
 var entriesLoaded=false;
 
 function key(date,person){return date+"__"+person;}
-function blank(date,person){return{date:date,person:person,blocks:[],tasks:"",hours:{}};}
+function blank(date,person){return{date:date,person:person,blocks:[],tasks:"",hours:{},areas:{}};}
 /* Older entries rated whole hours (key "9") and had an N/A mark. Spread each
    hour over its four quarters and drop N/A, which now just means blank. */
 function normHours(h){
@@ -352,7 +382,14 @@ function normHours(h){
   }
   return out;
 }
-function normAll(o){for(var id in o){if(o[id])o[id].hours=normHours(o[id].hours);}return o;}
+/* What a signal slot was spent on: slot -> area name, only on signal slots. */
+function normAreas(a,hours){
+  var out={};
+  if(!a||typeof a!=="object")return out;
+  for(var k in a){if(hours[k]==="s"&&typeof a[k]==="string"&&a[k].trim())out[k]=a[k].trim().slice(0,60);}
+  return out;
+}
+function normAll(o){for(var id in o){if(o[id]){o[id].hours=normHours(o[id].hours);o[id].areas=normAreas(o[id].areas,o[id].hours);}}return o;}
 function getEntry(date,person){return entries[key(date,person)]||null;}
 function ensure(date,person){
   var id=key(date,person);
@@ -426,7 +463,14 @@ function cleanList(v){
   });
   var items=(v&&Array.isArray(v.items)?v.items:[]).map(cleanTask).filter(Boolean);
   items.forEach(function(t){if(t.group&&!byId[t.group])t.group="";});
-  return{items:items,groups:groups,migrated:!!(v&&v.migrated)};
+  var seen={},areas=[];
+  (v&&Array.isArray(v.areas)?v.areas:[]).forEach(function(a){
+    var n=a&&typeof a.name==="string"?a.name.trim().slice(0,60):"";
+    if(!n||seen[n.toLowerCase()])return;
+    seen[n.toLowerCase()]=1;
+    areas.push({name:n,uses:Math.max(0,Math.floor(+a.uses||0))});
+  });
+  return{items:items,groups:groups,migrated:!!(v&&v.migrated),areas:areas};
 }
 function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function tsSave(){try{localStorage.setItem("sl.tasks",JSON.stringify(tasks));}catch(e){}}
@@ -501,7 +545,7 @@ function payloadFor(ids){
   ids.forEach(function(id){
     var e=entries[id];
     if(!e||!e.date||!e.person)return;
-    out.push({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours});
+    out.push({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{}});
   });
   return out;
 }
@@ -518,10 +562,10 @@ function flush(){
     ids.forEach(function(id){
       var e=entries[id];
       if(!e)return;
-      ops.push(function(){return db.collection("entries").doc(id).set({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours,updatedAt:new Date().toISOString()});});
+      ops.push(function(){return db.collection("entries").doc(id).set({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{},updatedAt:new Date().toISOString()});});
     });
     who.forEach(function(p){
-      ops.push(function(){return db.collection("tasks").doc(p).set({items:tasks[p].items,groups:tasks[p].groups,migrated:tasks[p].migrated,updatedAt:new Date().toISOString()});});
+      ops.push(function(){return db.collection("tasks").doc(p).set({items:tasks[p].items,groups:tasks[p].groups,migrated:tasks[p].migrated,areas:tasks[p].areas,updatedAt:new Date().toISOString()});});
     });
     var i=0;
     (function next(){
@@ -536,7 +580,7 @@ function flush(){
     var body={};
     var items=payloadFor(ids);
     if(items.length)body.entries=items;
-    if(who.length)body.tasks=who.map(function(p){return{person:p,items:tasks[p].items,groups:tasks[p].groups,migrated:tasks[p].migrated};});
+    if(who.length)body.tasks=who.map(function(p){return{person:p,items:tasks[p].items,groups:tasks[p].groups,migrated:tasks[p].migrated,areas:tasks[p].areas};});
     if(!body.entries&&!body.tasks)return;
     setNote("saving…");
     api("POST",body).then(function(){
@@ -584,7 +628,7 @@ function connectClaude(){
       var v=d.data()||{};
       fresh[d.id]={date:v.date||d.id.split("__")[0],person:v.person||d.id.split("__")[1],
         blocks:Array.isArray(v.blocks)?v.blocks:[],tasks:typeof v.tasks==="string"?v.tasks:"",
-        hours:v.hours&&typeof v.hours==="object"?v.hours:{}};
+        hours:v.hours&&typeof v.hours==="object"?v.hours:{},areas:v.areas&&typeof v.areas==="object"?v.areas:{}};
     });
     adopt(fresh);
   },function(err){setNote(err&&err.code==="revoked"?"sync stopped":"offline — changes kept locally");});
@@ -677,7 +721,7 @@ function startPoll(){
 /* ---------------- render plumbing ---------------- */
 var pendingRender=false;
 function isEditing(){
-  if(drag||dueMenu||tdrag)return true;
+  if(drag||dueMenu||tdrag||areaMenu)return true;
   var a=document.activeElement;
   return !!(a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA"));
 }
@@ -693,7 +737,7 @@ function el(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cl
 function frag(){return document.createDocumentFragment();}
 
 function render(){
-  closeDueMenu();
+  closeDueMenu();closeAreaMenu();
   selDelete=null;
   syncUndoOwner();
   renderWho();renderTabs();
@@ -1571,6 +1615,20 @@ function runAt(runs,i){for(var k=0;k<runs.length;k++)if(i>=runs[k].a&&i<=runs[k]
 function spanText(a,b){return slotLabel(a)+" – "+slotLabel(b+1);}
 function withoutRun(hours,r){var h=Object.assign({},hours);for(var k=r.a;k<=r.b;k++)delete h[SLOTS[k]];return h;}
 function fill(hours,a,b,v){for(var k=Math.min(a,b);k<=Math.max(a,b);k++)hours[SLOTS[k]]=v;return hours;}
+/* Inside the day column a signal slot with an area reads "s:<area>", so blocks
+   split where the area changes and moves/resizes carry the area along. */
+function combined(e){
+  var h={};if(!e)return h;
+  for(var k in e.hours){var v=e.hours[k];h[k]=v==="s"&&e.areas&&e.areas[k]?"s:"+e.areas[k]:v;}
+  return h;
+}
+function splitCombined(c){
+  var hours={},areas={};
+  for(var k in c){var v=c[k];hours[k]=v.charAt(0);if(v.length>2)areas[k]=v.slice(2);}
+  return{hours:hours,areas:areas};
+}
+function kindOf(v){return v.charAt(0);}
+function areaOf(v){return v.length>2?v.slice(2):"";}
 
 /* The block last clicked, drawn or moved is selected: Backspace/Delete (or its
    × button, for touch) removes it. Kept as a slot so it survives re-renders. */
@@ -1582,18 +1640,27 @@ function drawRuns(col,hours,editable,onCycle,selSlot){
   runsOf(hours).forEach(function(r){
     var len=r.b-r.a+1;
     var isSel=editable&&selSlot!=null&&selSlot>=r.a&&selSlot<=r.b;
-    var b=el("div","evt "+r.v+(len===1?" tiny":len<4?" one":"")+(isSel?" sel":""));
+    var kind=kindOf(r.v),area=areaOf(r.v);
+    var name=STATE_LABEL[kind]+(area?" · "+area:"");
+    var b=el("div","evt "+kind+(len===1?" tiny":len<4?" one":"")+(isSel?" sel":""));
     b.style.top="calc("+r.a+" * var(--hh) / 4 + 1px)";
     b.style.height="calc("+len+" * var(--hh) / 4 - 2px)";
-    b.appendChild(el("b",null,STATE_LABEL[r.v]));
+    b.appendChild(el("b",null,area||STATE_LABEL[kind]));
     b.appendChild(el("span","when",spanText(r.a,r.b)+" · "+fmtDur(len)));
-    b.title=STATE_LABEL[r.v]+", "+spanText(r.a,r.b);
+    b.title=name+", "+spanText(r.a,r.b);
     if(editable){
       b.tabIndex=0;b.setAttribute("role","button");
-      b.setAttribute("aria-label",STATE_LABEL[r.v]+", "+spanText(r.a,r.b)+". Enter switches signal and noise; Backspace deletes.");
-      b.onkeydown=function(ev){if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();onCycle(r);}};
+      b.setAttribute("aria-label",name+", "+spanText(r.a,r.b)+". Enter switches signal and noise; L labels it; Backspace deletes.");
+      b.onkeydown=function(ev){
+        if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();onCycle(r);}
+        else if((ev.key==="l"||ev.key==="L")&&kind==="s"&&isSel&&!ev.metaKey&&!ev.ctrlKey){ev.preventDefault();openAreaMenu(sel.date,sel.person,sel.slot);}
+      };
       var t=el("div","grip top");t.dataset.edge="top";b.appendChild(t);
       var bt=el("div","grip bot");bt.dataset.edge="bot";b.appendChild(bt);
+      if(isSel&&kind==="s"){
+        var lb=el("button","lab",area?"✎":"Label");lb.title="What was this?";lb.setAttribute("aria-label","Label what this signal was");lb.tabIndex=-1;
+        b.appendChild(lb);
+      }
       if(isSel){
         var x=el("button","del","×");x.title="Delete block";x.setAttribute("aria-label","Delete block");x.tabIndex=-1;
         b.appendChild(x);
@@ -1605,7 +1672,7 @@ function drawRuns(col,hours,editable,onCycle,selSlot){
 
 function dayColumn(date,person,editable){
   var e=getEntry(date,person);
-  var hours=e?e.hours:{};
+  var hours=combined(e);
   var day=el("div","day");
   var labs=el("div","day-labs");
   HOURS.forEach(function(h,i){
@@ -1619,15 +1686,18 @@ function dayColumn(date,person,editable){
   day.appendChild(col);
 
   function commit(next){
-    var en=ensure(date,person);
-    en.hours=next;
+    var en=ensure(date,person),sp=splitCombined(next);
+    en.hours=sp.hours;en.areas=sp.areas;
     markDirty(key(date,person));
     render();
   }
   function select(slot){sel={date:date,person:person,slot:slot};}
+  /* New signal asks what it was spent on. */
+  function commitSignal(next,slot){select(slot);commit(next);openAreaMenu(date,person,slot);}
   function cycle(r){
+    if(kindOf(r.v)==="n"){commitSignal(fill(withoutRun(hours,r),r.a,r.b,"s"),r.a);return;}
     select(r.a);
-    commit(fill(withoutRun(hours,r),r.a,r.b,r.v==="s"?"n":"s"));
+    commit(fill(withoutRun(hours,r),r.a,r.b,"n"));
   }
   var selSlot=sel&&sel.date===date&&sel.person===person?sel.slot:null;
   drawRuns(col,hours,editable,cycle,selSlot);
@@ -1687,7 +1757,7 @@ function dayColumn(date,person,editable){
     if(!drag||ev.pointerId!==drag.id)return;
     var d=drag;stop();
     if(d.moved){
-      if(d.mode==="paint")select(Math.min(d.start,d.cur));
+      if(d.mode==="paint"){commitSignal(preview(d),Math.min(d.start,d.cur));return;}
       else if(d.mode==="resize")select(Math.min(d.anchor,d.cur));
       else{var len=d.run.b-d.run.a+1;select(Math.max(0,Math.min(SLOTS.length-len,d.run.a+d.cur-d.start)));}
       commit(preview(d));return;
@@ -1697,8 +1767,7 @@ function dayColumn(date,person,editable){
       /* A tap on empty space drops in an hour, stopping short of the next block. */
       var end=d.start;
       while(end-d.start<3&&end+1<SLOTS.length&&!hours[SLOTS[end+1]])end++;
-      select(d.start);
-      commit(fill(Object.assign({},hours),d.start,end,"s"));
+      commitSignal(fill(Object.assign({},hours),d.start,end,"s"),d.start);
     }
   }
   function onCancel(){stop();drawRuns(col,hours,true,cycle);}
@@ -1706,6 +1775,7 @@ function dayColumn(date,person,editable){
   col.addEventListener("pointerdown",function(ev){
     if(ev.button!==0||drag)return;
     if(ev.target.closest&&ev.target.closest(".del")){ev.preventDefault();if(selDelete)selDelete();return;}
+    if(ev.target.closest&&ev.target.closest(".lab")){ev.preventDefault();ev.stopPropagation();openAreaMenu(date,person,selSlot);return;}
     var i=idxAt(ev.clientY);
     var run=runAt(runsOf(hours),i);
     var grip=ev.target.closest&&ev.target.closest(".grip");
@@ -1725,6 +1795,127 @@ function dayColumn(date,person,editable){
     }
   });
   return day;
+}
+
+/* ---------------- what the signal went to ----------------
+   After a stretch is marked signal, a menu asks what it was. The menu is
+   everything you have typed into it before, most-used first; × drops an
+   option you won't need again (past labels stay). */
+var areaMenu=null;
+
+function sortedAreas(person){
+  return tasks[person].areas.slice().sort(function(a,b){return b.uses-a.uses||a.name.localeCompare(b.name);});
+}
+function useArea(person,name){
+  var list=tasks[person].areas,low=name.toLowerCase();
+  for(var i=0;i<list.length;i++)if(list[i].name.toLowerCase()===low){list[i].uses++;return list[i].name;}
+  list.push({name:name,uses:1});
+  return name;
+}
+function tagRun(date,person,slot,name){
+  var en=ensure(date,person),c=combined(en);
+  var r=runAt(runsOf(c),slot);
+  if(!r||kindOf(r.v)!=="s")return;
+  if(name){name=useArea(person,name);markTasksDirty(person);}
+  var sp=splitCombined(fill(c,r.a,r.b,name?"s:"+name:"s"));
+  en.hours=sp.hours;en.areas=sp.areas;
+  markDirty(key(date,person));
+  sel={date:date,person:person,slot:slot};
+  render();
+}
+
+function closeAreaMenu(){
+  if(!areaMenu)return;
+  var m=areaMenu;areaMenu=null;
+  m.el.remove();
+  document.removeEventListener("pointerdown",m.away,true);
+}
+
+function openAreaMenu(date,person,slot){
+  closeAreaMenu();
+  if(person!==state.me)return;
+  var anchor=document.querySelector(".day-col.edit .evt.sel");
+  var r=runAt(runsOf(combined(getEntry(date,person))),slot);
+  if(!anchor||!r||kindOf(r.v)!=="s")return;
+  var current=areaOf(r.v);
+  var m=el("div","duemenu areamenu");
+  var head=el("div","am-head");
+  head.appendChild(el("b",null,"What was this?"));
+  head.appendChild(el("span",null,spanText(r.a,r.b)));
+  m.appendChild(head);
+  var inp=document.createElement("input");
+  inp.type="text";inp.maxLength=60;inp.autocomplete="off";inp.className="am-in";
+  inp.setAttribute("aria-label","What were you working on");
+  m.appendChild(inp);
+  var list=el("div","am-list");list.setAttribute("role","listbox");
+  m.appendChild(list);
+  var opts=[],hi=0;
+
+  function pick(name){closeAreaMenu();tagRun(date,person,slot,name);}
+  function light(){opts.forEach(function(o,i){o.el.classList.toggle("hi",i===hi);});}
+  function draw(){
+    var q=inp.value.trim(),low=q.toLowerCase(),exact=false;
+    list.innerHTML="";opts=[];
+    sortedAreas(person).forEach(function(a){
+      if(low&&a.name.toLowerCase().indexOf(low)<0)return;
+      if(a.name.toLowerCase()===low)exact=true;
+      var row=el("div","am-opt"+(a.name===current?" cur":""));row.setAttribute("role","option");
+      var b=el("button","am-name");
+      b.appendChild(el("span",null,a.name));
+      b.appendChild(el("i",null,String(a.uses)));
+      b.onclick=function(){pick(a.name);};
+      var x=el("button","am-x","×");x.title="Remove from the menu";x.setAttribute("aria-label","Remove "+a.name+" from the menu");
+      x.onclick=function(ev){
+        ev.stopPropagation();
+        var L=tasks[person].areas;
+        tasks[person].areas=L.filter(function(o){return o!==a;});
+        markTasksDirty(person);
+        draw();inp.focus({preventScroll:true});
+      };
+      row.appendChild(b);row.appendChild(x);
+      list.appendChild(row);
+      opts.push({el:row,name:a.name});
+    });
+    if(q&&!exact){
+      var add=el("div","am-opt add");
+      var ab=el("button","am-name");ab.appendChild(el("span",null,"+ Add “"+q+"”"));
+      ab.onclick=function(){pick(q);};
+      add.appendChild(ab);list.appendChild(add);
+      opts.push({el:add,name:q});
+    }
+    if(!opts.length)list.appendChild(el("div","am-empty",tasks[person].areas.length?"No match":"Nothing yet. Type what you worked on, then Enter."));
+    if(current&&!q){
+      var cl=el("button","clear","Remove label");
+      cl.onclick=function(){pick("");};
+      list.appendChild(cl);
+    }
+    hi=Math.min(hi,Math.max(0,opts.length-1));
+    inp.placeholder=tasks[person].areas.length?"Type to filter or add…":"e.g. school hw";
+    light();
+  }
+  inp.oninput=function(){hi=0;draw();};
+  inp.onkeydown=function(ev){
+    if(ev.key==="ArrowDown"){ev.preventDefault();if(opts.length){hi=(hi+1)%opts.length;light();}}
+    else if(ev.key==="ArrowUp"){ev.preventDefault();if(opts.length){hi=(hi-1+opts.length)%opts.length;light();}}
+    else if(ev.key==="Enter"){ev.preventDefault();if(opts[hi])pick(opts[hi].name);}
+    else if(ev.key==="Escape"){ev.preventDefault();ev.stopPropagation();closeAreaMenu();anchor.focus({preventScroll:true});}
+  };
+  draw();
+  document.body.appendChild(m);
+
+  var ar=anchor.getBoundingClientRect(),w=m.offsetWidth,h=m.offsetHeight;
+  var left=ar.right+8;
+  if(left+w>window.innerWidth-8)left=Math.max(8,Math.min(window.innerWidth-w-8,ar.left));
+  var top=left>=ar.right?ar.top:ar.bottom+6;
+  if(top+h>window.innerHeight-8)top=Math.max(8,left>=ar.right?window.innerHeight-h-8:ar.top-h-6);
+  m.style.left=(left+window.scrollX)+"px";m.style.top=(top+window.scrollY)+"px";
+
+  var away=function(ev){if(!m.contains(ev.target))closeAreaMenu();};
+  areaMenu={el:m,away:away};
+  setTimeout(function(){
+    if(areaMenu&&areaMenu.el===m)document.addEventListener("pointerdown",away,true);
+  },0);
+  if(!matchMedia("(pointer:coarse)").matches)inp.focus({preventScroll:true});
 }
 
 /* ---------------- HISTORY ---------------- */
@@ -1872,6 +2063,7 @@ function analysisView(){
   }
   f.appendChild(pctChart(series,dates));
   f.appendChild(hoursChart(series,dates));
+  f.appendChild(areasCard(dates));
   f.appendChild(heatCard(series,dates));
   return f;
 }
@@ -2164,6 +2356,55 @@ function barsFor(rows,dates){
   return wrap;
 }
 
+/* what the signal hours actually went to */
+function areasCard(dates){
+  var card=el("div","card");
+  card.appendChild(el("h3",null,"What the signal went to"));
+  card.appendChild(el("div","note","Signal hours by what you labeled them, over this window."));
+  var cols=el("div","area-cols");
+  PEOPLE.forEach(function(p){
+    var tot={},all=0,days={};
+    dates.forEach(function(d){
+      var e=getEntry(d,p.k);
+      if(!e)return;
+      for(var k in e.hours){
+        if(e.hours[k]!=="s")continue;
+        var a=(e.areas&&e.areas[k])||"";
+        tot[a]=(tot[a]||0)+.25;all+=.25;
+        if(!days[a])days[a]={};days[a][d]=1;
+      }
+    });
+    var col=el("div","area-col");
+    var head=el("div","row");head.style.marginBottom="8px";
+    var dot=el("span","dot");dot.style.background=p.c;
+    head.appendChild(dot);head.appendChild(el("span","lbl",p.n));
+    head.appendChild(el("span","area-tot",fmtH(all)+"h signal"));
+    col.appendChild(head);
+    var names=Object.keys(tot).sort(function(a,b){
+      if(!a!==!b)return a?-1:1;
+      return tot[b]-tot[a]||a.localeCompare(b);
+    });
+    if(!all)col.appendChild(el("div","empty","No signal hours in this window."));
+    var top=0;names.forEach(function(n){if(n&&tot[n]>top)top=tot[n];});
+    if(!top)top=all;
+    names.forEach(function(n){
+      var nd=Object.keys(days[n]).length;
+      var row=el("div","area-row"+(n?"":" none"));
+      row.appendChild(el("span","area-name",n||"Unlabeled"));
+      var bar=el("span","area-bar");
+      var fillEl=el("i");fillEl.style.width=Math.max(2,Math.min(100,100*tot[n]/top))+"%";
+      if(n)fillEl.style.background=p.c;
+      bar.appendChild(fillEl);row.appendChild(bar);
+      row.appendChild(el("span","area-num",fmtH(tot[n])+"h · "+Math.round(100*tot[n]/all)+"%"));
+      row.title=(n||"Unlabeled")+": "+fmtH(tot[n])+"h of signal across "+nd+" day"+(nd===1?"":"s");
+      col.appendChild(row);
+    });
+    cols.appendChild(col);
+  });
+  card.appendChild(cols);
+  return card;
+}
+
 /* chart 3: hour-of-day heatmap */
 function heatCard(series,dates){
   var card=el("div","card");
@@ -2345,7 +2586,7 @@ document.addEventListener("keydown",function(ev){
   else if(ev.key==="Escape"){sel=null;selDelete=null;render();}
 });
 document.addEventListener("pointerdown",function(ev){
-  if(!sel||(ev.target.closest&&ev.target.closest(".day-col.edit")))return;
+  if(!sel||(ev.target.closest&&ev.target.closest(".day-col.edit,.areamenu")))return;
   sel=null;selDelete=null;
   Array.prototype.slice.call(document.querySelectorAll(".evt.sel")).forEach(function(b){b.classList.remove("sel");var x=b.querySelector(".del");if(x)x.remove();});
 },true);
@@ -2367,7 +2608,7 @@ document.addEventListener("keydown",function(ev){
   if(a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA")&&a.value!==a.dataset.v0)return;
   ev.preventDefault();
   if(drag)return;
-  closeDueMenu();
+  closeDueMenu();closeAreaMenu();
   if(a&&a.blur)a.blur();
   if(isUndo)undo();else redo();
 });

@@ -16,10 +16,12 @@ Live at **https://nliptas.pages.dev**
 - **Score hours** — 6am to 6am as a calendar column in 15-minute steps. Drag to
   paint signal, click a block to switch signal ↔ noise, Backspace to delete.
   Unscored time is left out of both sides of the ratio.
+  Marking time signal pops up a menu asking what it was; the menu remembers
+  everything you've typed into it, most-used first, and × drops an option.
 - **Undo** — ⌘Z / Ctrl+Z and ⇧⌘Z / Ctrl+Y undo and redo your own changes.
 - **History** — every day in reverse order with both hour strips and both scores.
-- **Analysis** — signal share per day, where the hours went, and which clock
-  hours actually come out signal for each person.
+- **Analysis** — signal share per day, where the hours went, what the signal
+  went to, and which clock hours actually come out signal for each person.
 
 The headline number is signal ÷ (signal + noise). The raw S:N ratio sits beside it.
 
