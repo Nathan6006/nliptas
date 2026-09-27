@@ -324,7 +324,9 @@ var MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
 function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 function parseISO(s){var p=s.split("-");return new Date(+p[0],+p[1]-1,+p[2]);}
 function shift(s,n){var d=parseISO(s);d.setDate(d.getDate()+n);return iso(d);}
-function todayISO(){return iso(new Date());}
+/* The day rolls over at 3am: until then it still counts as the day before. */
+var DAY_ROLLOVER=3;
+function todayISO(){return iso(new Date(Date.now()-DAY_ROLLOVER*36e5));}
 function longDate(s){var d=parseISO(s);return DOW[d.getDay()]+" "+MON[d.getMonth()]+" "+d.getDate();}
 function shortDate(s){var d=parseISO(s);return(d.getMonth()+1)+"/"+d.getDate();}
 function relDate(s){
@@ -343,9 +345,9 @@ function fmtDur(q){var h=Math.floor(q/4),m=(q%4)*15;return(h?h+"h":"")+(h&&m?" "
 
 /* ---------------- state ---------------- */
 var state={
-  view:"plan",
+  view:"score",
   me:null,
-  planDate:(new Date().getHours()>=19)?shift(todayISO(),1):todayISO(),
+  planDate:todayISO(),
   scoreDate:todayISO(),
   window:30,
   ready:false
@@ -781,7 +783,7 @@ function renderWho(){
 function renderTabs(){
   var t=document.getElementById("tabs");t.innerHTML="";
   if(!state.me||needsKey)return;
-  [["plan","Plan"],["score","Score hours"],["history","History"],["analysis","Analysis"]].forEach(function(p){
+  [["score","Score hours"],["plan","Plan"],["history","History"],["analysis","Analysis"]].forEach(function(p){
     var b=el("button","tab",p[1]);
     b.setAttribute("role","tab");
     b.setAttribute("aria-selected",String(state.view===p[0]));
@@ -852,7 +854,8 @@ function dateNav(field,onChange){
   next.onclick=function(){state[field]=shift(state[field],1);onChange();};
   nav.appendChild(prev);nav.appendChild(next);nav.appendChild(read);
   var quick=el("div","row");
-  [["Today",0],["Tomorrow",1],["Yesterday",-1]].forEach(function(q){
+  /* Planning looks ahead, scoring looks back: the second shortcut follows. */
+  (field==="scoreDate"?[["Today",0],["Yesterday",-1],["Tomorrow",1]]:[["Today",0],["Tomorrow",1],["Yesterday",-1]]).forEach(function(q){
     var d=shift(todayISO(),q[1]);
     var b=el("button","pill",q[0]);
     b.setAttribute("aria-pressed",String(state[field]===d));
