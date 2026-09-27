@@ -8,7 +8,8 @@ Live at **https://nliptas.pages.dev**
 
 ## The system
 
-- **Plan** — after 7pm the date defaults to tomorrow. Both schedules sit side by
+- **Plan** — defaults to today, with Tomorrow as the next shortcut (Score hours
+  offers Yesterday instead). The day rolls over at 3am. Both schedules sit side by
   side; you edit yours, you can always see the other. Time blocks are free text
   (`10-1045`, `9-sleep`), the way the spreadsheet had them. Underneath is a
   running task list per person that carries over day to day, with optional due
