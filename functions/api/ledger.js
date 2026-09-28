@@ -4,7 +4,8 @@
  * One KV key per person per month: `ledger:<person>:<YYYY-MM>`, holding
  * { "<YYYY-MM-DD>": { blocks, tasks, hours, areas, segs, updatedAt } }. `areas`
  * maps a signal slot to what it was spent on; `segs` maps a slot to the id of
- * the block it belongs to, so adjacent blocks stay separate. Each person only
+ * the block it belongs to, so adjacent blocks stay separate; `notes` maps a
+ * block id to optional details beyond its label. Each person only
  * ever writes their own keys, so the two of you never clobber each other —
  * only your own second tab can, and that is last-writer-wins by design.
  *
@@ -84,6 +85,17 @@ function cleanSegs(v, hours) {
   return out;
 }
 
+function cleanNotes(v, segs) {
+  const out = {};
+  if (!v || typeof v !== "object") return out;
+  const live = new Set(Object.values(segs));
+  for (const id of Object.keys(v)) {
+    const t = str(v[id], 200);
+    if (live.has(id) && t.trim()) out[id] = t;
+  }
+  return out;
+}
+
 function cleanAreaList(v) {
   if (!Array.isArray(v)) return [];
   const seen = new Set();
@@ -157,6 +169,7 @@ async function readAll(env) {
         hours: e.hours || {},
         areas: e.areas || {},
         segs: e.segs || {},
+        notes: e.notes || {},
       };
     }
   });
@@ -194,12 +207,14 @@ async function writeBatch(request, env) {
     const stamp = new Date().toISOString();
     for (const it of list) {
       const hours = cleanHours(it.hours);
+      const segs = cleanSegs(it.segs, hours);
       doc[it.date] = {
         blocks: cleanBlocks(it.blocks),
         tasks: str(it.tasks, MAX_TASKS),
         hours,
         areas: cleanSlotAreas(it.areas, hours),
-        segs: cleanSegs(it.segs, hours),
+        segs,
+        notes: cleanNotes(it.notes, segs),
         updatedAt: stamp,
       };
     }
