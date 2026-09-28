@@ -21,6 +21,7 @@ Live at **https://nliptas.pages.dev**
   Unscored time is left out of both sides of the ratio.
   Marking time signal pops up a menu asking what it was; the menu remembers
   everything you've typed into it, most-used first, and × drops an option.
+  Under the label there's an optional Details line (e.g. "history essay").
 - **Undo** — ⌘Z / Ctrl+Z and ⇧⌘Z / Ctrl+Y undo and redo your own changes.
 - **History** — every day in reverse order with both hour strips and both scores.
 - **Analysis** — signal share per day, where the hours went, what the signal

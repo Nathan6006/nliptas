@@ -143,12 +143,19 @@ button.due:hover{background:var(--panel-2);color:var(--ink)}
 .am-opt:hover .am-x,.am-opt.hi .am-x,.am-x:focus-visible{opacity:1}
 @media (pointer:coarse){.duemenu .am-x{opacity:1}}
 .duemenu .am-x:hover{color:var(--noise);background:none}
+.am-det{display:flex;flex-direction:column;gap:4px;border-top:1px solid var(--line);margin-top:5px;padding:8px 3px 3px}
+.am-det>span{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);padding-left:5px}
+.am-det .am-in{margin:0}
 .am-empty{padding:6px 10px 8px;font-size:12.5px;color:var(--ink-3)}
 .area-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px 28px}
 .area-tot{margin-left:auto;font-family:var(--f-mono);font-size:11.5px;color:var(--ink-3)}
 .area-row{display:grid;grid-template-columns:minmax(70px,34%) 1fr auto;align-items:center;gap:10px;padding:3px 0;font-size:13px}
 .area-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .area-row.none .area-name{color:var(--ink-3);font-style:italic}
+.area-dets{margin:0 0 6px 10px;padding-left:10px;border-left:2px solid var(--line)}
+.area-det{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--ink-2);padding:1px 0}
+.area-det>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.area-det.more{color:var(--ink-3)}
 .area-bar{height:10px;border-radius:5px;background:var(--panel-2);overflow:hidden}
 .area-bar i{display:block;height:100%;border-radius:5px;background:color-mix(in srgb,var(--signal) 35%,var(--panel-2))}
 .area-num{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-2);white-space:nowrap}
@@ -216,6 +223,9 @@ textarea:focus{border-color:var(--line-2);background:var(--panel);outline:none}
 .evt .lab:hover{background:var(--panel)}
 .evt .lab.empty{font-weight:400;border-style:dashed;opacity:.8}
 .evt.tiny .lab{position:absolute;left:6px;top:50%;transform:translateY(-50%);height:15px;line-height:13px;font-size:10.5px;padding:0 6px}
+.evt .det{font-size:11.5px;line-height:1.3;opacity:.9;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;cursor:text}
+.evt.one .det{flex:1;min-width:0;white-space:nowrap;text-overflow:ellipsis;display:block}
+.evt.tiny .det{display:none}
 .evt .split{display:none;position:absolute;top:50%;right:28px;transform:translateY(-50%);width:20px;height:20px;border:0;border-radius:50%;background:var(--panel);color:var(--ink);box-shadow:0 0 0 1px var(--line-2);font-size:11px;line-height:1;cursor:pointer;padding:0;z-index:3}
 .evt.sel .split{display:grid;place-items:center}
 .evt b{font-weight:600}
@@ -373,7 +383,7 @@ var tasksLoaded=false;
 var entriesLoaded=false;
 
 function key(date,person){return date+"__"+person;}
-function blank(date,person){return{date:date,person:person,blocks:[],tasks:"",hours:{},areas:{},segs:{}};}
+function blank(date,person){return{date:date,person:person,blocks:[],tasks:"",hours:{},areas:{},segs:{},notes:{}};}
 /* Older entries rated whole hours (key "9") and had an N/A mark. Spread each
    hour over its four quarters and drop N/A, which now just means blank. */
 function normHours(h){
@@ -402,7 +412,15 @@ function normSegs(g,hours){
   for(var k in g){if(hours[k]&&typeof g[k]==="string"&&/^[a-z0-9]{1,12}$/.test(g[k]))out[k]=g[k];}
   return out;
 }
-function normAll(o){for(var id in o){if(o[id]){o[id].hours=normHours(o[id].hours);o[id].areas=normAreas(o[id].areas,o[id].hours);o[id].segs=normSegs(o[id].segs,o[id].hours);}}return o;}
+/* Optional details on a block, beyond its label: block id -> text. */
+function normNotes(n,segs){
+  var out={},live={};
+  for(var k in segs)live[segs[k]]=1;
+  if(!n||typeof n!=="object")return out;
+  for(var id in n){if(live[id]&&typeof n[id]==="string"&&n[id].trim())out[id]=n[id].slice(0,200);}
+  return out;
+}
+function normAll(o){for(var id in o){if(o[id]){o[id].hours=normHours(o[id].hours);o[id].areas=normAreas(o[id].areas,o[id].hours);o[id].segs=normSegs(o[id].segs,o[id].hours);o[id].notes=normNotes(o[id].notes,o[id].segs);}}return o;}
 function getEntry(date,person){return entries[key(date,person)]||null;}
 function ensure(date,person){
   var id=key(date,person);
@@ -558,7 +576,7 @@ function payloadFor(ids){
   ids.forEach(function(id){
     var e=entries[id];
     if(!e||!e.date||!e.person)return;
-    out.push({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{},segs:e.segs||{}});
+    out.push({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{},segs:e.segs||{},notes:e.notes||{}});
   });
   return out;
 }
@@ -575,7 +593,7 @@ function flush(){
     ids.forEach(function(id){
       var e=entries[id];
       if(!e)return;
-      ops.push(function(){return db.collection("entries").doc(id).set({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{},segs:e.segs||{},updatedAt:new Date().toISOString()});});
+      ops.push(function(){return db.collection("entries").doc(id).set({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{},segs:e.segs||{},notes:e.notes||{},updatedAt:new Date().toISOString()});});
     });
     who.forEach(function(p){
       ops.push(function(){return db.collection("tasks").doc(p).set({items:tasks[p].items,groups:tasks[p].groups,migrated:tasks[p].migrated,areas:tasks[p].areas,updatedAt:new Date().toISOString()});});
@@ -641,7 +659,7 @@ function connectClaude(){
       var v=d.data()||{};
       fresh[d.id]={date:v.date||d.id.split("__")[0],person:v.person||d.id.split("__")[1],
         blocks:Array.isArray(v.blocks)?v.blocks:[],tasks:typeof v.tasks==="string"?v.tasks:"",
-        hours:v.hours&&typeof v.hours==="object"?v.hours:{},areas:v.areas&&typeof v.areas==="object"?v.areas:{},segs:v.segs&&typeof v.segs==="object"?v.segs:{}};
+        hours:v.hours&&typeof v.hours==="object"?v.hours:{},areas:v.areas&&typeof v.areas==="object"?v.areas:{},segs:v.segs&&typeof v.segs==="object"?v.segs:{},notes:v.notes&&typeof v.notes==="object"?v.notes:{}};
     });
     adopt(fresh);
   },function(err){setNote(err&&err.code==="revoked"?"sync stopped":"offline — changes kept locally");});
@@ -750,7 +768,7 @@ function el(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cl
 function frag(){return document.createDocumentFragment();}
 
 function render(){
-  closeDueMenu();closeAreaMenu();
+  closeDueMenu();closeAreaMenu(true);
   selDelete=null;
   syncUndoOwner();
   renderWho();renderTabs();
@@ -1680,6 +1698,9 @@ function drawRuns(col,hours,editable,onCycle,selSlot){
       b.appendChild(lb);
     }else b.appendChild(el("b",null,area||STATE_LABEL[kind]));
     b.appendChild(el("span","when",spanText(r.a,r.b)+" · "+fmtDur(len)));
+    var note=kind==="s"&&col.__notes?col.__notes[parseV(r.v).id]||"":"";
+    if(note)b.appendChild(el("span","det",note));
+    if(note)name+=" — "+note;
     b.title=name+", "+spanText(r.a,r.b);
     if(editable){
       b.tabIndex=0;b.setAttribute("role","button");
@@ -1718,11 +1739,12 @@ function dayColumn(date,person,editable){
   var end=el("span",null,hourLabel(DAY_END));end.style.top="calc("+HOURS.length+" * var(--hh))";labs.appendChild(end);
   day.appendChild(labs);
   var col=el("div","day-col"+(editable?" edit":""));
+  col.__notes=e&&e.notes||{};
   day.appendChild(col);
 
   function commit(next){
     var en=ensure(date,person),sp=splitCombined(next);
-    en.hours=sp.hours;en.areas=sp.areas;en.segs=sp.segs;
+    en.hours=sp.hours;en.areas=sp.areas;en.segs=sp.segs;en.notes=normNotes(en.notes,en.segs);
     markDirty(key(date,person));
     render();
   }
@@ -1829,13 +1851,13 @@ function dayColumn(date,person,editable){
   col.addEventListener("pointerdown",function(ev){
     if(ev.button!==0||drag)return;
     if(ev.target.closest&&ev.target.closest(".del")){ev.preventDefault();if(selDelete)selDelete();return;}
-    var btn=ev.target.closest&&ev.target.closest(".lab,.split");
+    var btn=ev.target.closest&&ev.target.closest(".lab,.split,.det");
     if(btn){
       ev.preventDefault();ev.stopPropagation();
       var at=+btn.closest(".evt").dataset.a,hit=runAt(runsOf(hours),at);
       if(!hit)return;
       if(btn.classList.contains("split")){split(hit);return;}
-      select(at);render();openAreaMenu(date,person,at);return;
+      select(at);render();openAreaMenu(date,person,at,btn.classList.contains("det"));return;
     }
     var i=idxAt(ev.clientY);
     var run=runAt(runsOf(hours),i);
@@ -1884,21 +1906,40 @@ function tagRun(date,person,slot,name){
   if(!r||kindOf(r.v)!=="s")return;
   if(name){name=useArea(person,name);markTasksDirty(person);}
   var sp=splitCombined(fill(c,r.a,r.b,mk("s",parseV(r.v).id||sid(),name)));
-  en.hours=sp.hours;en.areas=sp.areas;en.segs=sp.segs;
+  en.hours=sp.hours;en.areas=sp.areas;en.segs=sp.segs;en.notes=normNotes(en.notes,en.segs);
   markDirty(key(date,person));
   sel={date:date,person:person,slot:slot};
   render();
 }
 
-function closeAreaMenu(){
+/* The block's id, giving an older id-less block one so details can hang off it. */
+function blockIdAt(date,person,slot){
+  var en=ensure(date,person),c=combined(en),r=runAt(runsOf(c),slot);
+  if(!r)return"";
+  var p=parseV(r.v);
+  if(p.id)return p.id;
+  var id=sid(),sp=splitCombined(fill(c,r.a,r.b,mk(p.kind,id,p.area)));
+  en.hours=sp.hours;en.areas=sp.areas;en.segs=sp.segs;
+  return id;
+}
+function setNote(date,person,slot,text){
+  var id=blockIdAt(date,person,slot),en=ensure(date,person);
+  if(!id)return;
+  en.notes=Object.assign({},en.notes);
+  if(text.trim())en.notes[id]=text.slice(0,200);else delete en.notes[id];
+  markDirty(key(date,person));
+}
+
+function closeAreaMenu(quiet){
   if(!areaMenu)return;
   var m=areaMenu;areaMenu=null;
   m.el.remove();
   document.removeEventListener("pointerdown",m.away,true);
+  if(m.changed&&!quiet)render();
 }
 
-function openAreaMenu(date,person,slot){
-  closeAreaMenu();
+function openAreaMenu(date,person,slot,toDetails){
+  closeAreaMenu(true);
   if(person!==state.me)return;
   var anchor=document.querySelector(".day-col.edit .evt.sel");
   var r=runAt(runsOf(combined(getEntry(date,person))),slot);
@@ -1917,7 +1958,22 @@ function openAreaMenu(date,person,slot){
   m.appendChild(list);
   var opts=[],hi=0;
 
-  function pick(name){closeAreaMenu();tagRun(date,person,slot,name);}
+  /* Details: optional, separate from the label, saved as you type. */
+  var dl=el("label","am-det");
+  dl.appendChild(el("span",null,"Details"));
+  var det=document.createElement("input");
+  det.type="text";det.maxLength=200;det.autocomplete="off";det.className="am-in";
+  det.placeholder="Optional — e.g. history essay";
+  var rid=parseV(r.v).id,en0=getEntry(date,person);
+  det.value=rid&&en0&&en0.notes&&en0.notes[rid]||"";
+  dl.appendChild(det);
+  det.oninput=function(){setNote(date,person,slot,det.value);if(areaMenu)areaMenu.changed=true;};
+  det.onkeydown=function(ev){
+    if(ev.key==="Enter"){ev.preventDefault();closeAreaMenu();}
+    else if(ev.key==="Escape"){ev.preventDefault();ev.stopPropagation();closeAreaMenu();}
+  };
+
+  function pick(name){closeAreaMenu(true);tagRun(date,person,slot,name);}
   function light(){opts.forEach(function(o,i){o.el.classList.toggle("hi",i===hi);});}
   function draw(){
     var q=inp.value.trim(),low=q.toLowerCase(),exact=false;
@@ -1964,9 +2020,10 @@ function openAreaMenu(date,person,slot){
     if(ev.key==="ArrowDown"){ev.preventDefault();if(opts.length){hi=(hi+1)%opts.length;light();}}
     else if(ev.key==="ArrowUp"){ev.preventDefault();if(opts.length){hi=(hi-1+opts.length)%opts.length;light();}}
     else if(ev.key==="Enter"){ev.preventDefault();if(opts[hi])pick(opts[hi].name);}
-    else if(ev.key==="Escape"){ev.preventDefault();ev.stopPropagation();closeAreaMenu();anchor.focus({preventScroll:true});}
+    else if(ev.key==="Escape"){ev.preventDefault();ev.stopPropagation();closeAreaMenu();if(anchor.isConnected)anchor.focus({preventScroll:true});}
   };
   draw();
+  m.appendChild(dl);
   document.body.appendChild(m);
 
   var ar=anchor.getBoundingClientRect(),w=m.offsetWidth,h=m.offsetHeight;
@@ -1976,12 +2033,19 @@ function openAreaMenu(date,person,slot){
   if(top+h>window.innerHeight-8)top=Math.max(8,left>=ar.right?window.innerHeight-h-8:ar.top-h-6);
   m.style.left=(left+window.scrollX)+"px";m.style.top=(top+window.scrollY)+"px";
 
-  var away=function(ev){if(!m.contains(ev.target))closeAreaMenu();};
+  /* Closing from a click elsewhere: redraw after that click has run its course. */
+  var away=function(ev){
+    if(m.contains(ev.target))return;
+    var changed=areaMenu&&areaMenu.changed;
+    closeAreaMenu(true);
+    if(changed)setTimeout(softRender,0);
+  };
   areaMenu={el:m,away:away};
   setTimeout(function(){
     if(areaMenu&&areaMenu.el===m)document.addEventListener("pointerdown",away,true);
   },0);
-  if(!matchMedia("(pointer:coarse)").matches)inp.focus({preventScroll:true});
+  if(toDetails)det.focus({preventScroll:true});
+  else if(!matchMedia("(pointer:coarse)").matches)inp.focus({preventScroll:true});
 }
 
 /* ---------------- HISTORY ---------------- */
@@ -2429,7 +2493,7 @@ function areasCard(dates){
   card.appendChild(el("div","note","Signal hours by what you labeled them, over this window."));
   var cols=el("div","area-cols");
   PEOPLE.forEach(function(p){
-    var tot={},all=0,days={};
+    var tot={},all=0,days={},dets={};
     dates.forEach(function(d){
       var e=getEntry(d,p.k);
       if(!e)return;
@@ -2438,6 +2502,8 @@ function areasCard(dates){
         var a=(e.areas&&e.areas[k])||"";
         tot[a]=(tot[a]||0)+.25;all+=.25;
         if(!days[a])days[a]={};days[a][d]=1;
+        var nt=e.segs&&e.notes?(e.notes[e.segs[k]]||"").trim():"";
+        if(nt){if(!dets[a])dets[a]={};dets[a][nt]=(dets[a][nt]||0)+.25;}
       }
     });
     var col=el("div","area-col");
@@ -2464,6 +2530,20 @@ function areasCard(dates){
       row.appendChild(el("span","area-num",fmtH(tot[n])+"h · "+Math.round(100*tot[n]/all)+"%"));
       row.title=(n||"Unlabeled")+": "+fmtH(tot[n])+"h of signal across "+nd+" day"+(nd===1?"":"s");
       col.appendChild(row);
+      /* The details written under this label, biggest first. */
+      if(dets[n]){
+        var ds=Object.keys(dets[n]).sort(function(x,y){return dets[n][y]-dets[n][x]||x.localeCompare(y);});
+        var box=el("div","area-dets");
+        ds.slice(0,5).forEach(function(t){
+          var dr=el("div","area-det");
+          dr.appendChild(el("span",null,t));
+          dr.appendChild(el("span","area-num",fmtH(dets[n][t])+"h"));
+          dr.title=t+": "+fmtH(dets[n][t])+"h";
+          box.appendChild(dr);
+        });
+        if(ds.length>5)box.appendChild(el("div","area-det more","+ "+(ds.length-5)+" more"));
+        col.appendChild(box);
+      }
     });
     cols.appendChild(col);
   });
