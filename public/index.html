@@ -224,6 +224,41 @@ textarea:focus{border-color:var(--line-2);background:var(--panel);outline:none}
 .day-col{position:relative;height:calc(24 * var(--hh));border-left:1px solid var(--line);border-bottom:1px solid var(--line);background:repeating-linear-gradient(to bottom,var(--line) 0 1px,transparent 1px var(--hh)),repeating-linear-gradient(to bottom,transparent 0 calc(var(--hh) / 2),color-mix(in srgb,var(--line) 45%,transparent) calc(var(--hh) / 2) calc(var(--hh) / 2 + 1px),transparent calc(var(--hh) / 2 + 1px) var(--hh))}
 .day-col.edit{cursor:crosshair;touch-action:pan-y;-webkit-touch-callout:none}
 .day-col.armed{touch-action:none}
+.edit .evt.sel{touch-action:none}
+@media (pointer:coarse){
+  .day{--hh:60px}
+  .evt .del,.evt .split{display:none!important}
+  .edit .evt.sel{overflow:visible}
+  .edit .evt.sel .grip{height:30px}
+  .edit .evt.sel .grip.top{top:-15px}.edit .evt.sel .grip.bot{bottom:-15px}
+  .edit .evt.sel .grip::after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;background:var(--panel);border:2.5px solid currentColor;top:50%;transform:translateY(-50%)}
+  .edit .evt.sel .grip.top::after{left:14px}.edit .evt.sel .grip.bot::after{right:14px}
+}
+.dragtip{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:60;background:var(--ink);color:var(--bg);font-family:var(--f-mono);font-size:13px;padding:6px 12px;border-radius:999px;box-shadow:var(--shadow);pointer-events:none}
+.selbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(10px + env(safe-area-inset-bottom));z-index:30;width:min(540px,calc(100vw - 16px));background:var(--panel);border:1px solid var(--line-2);border-radius:14px;box-shadow:var(--shadow);padding:8px;display:flex;flex-direction:column;gap:8px}
+body:has(.selbar){padding-bottom:140px}
+body:has(.areamenu) .selbar,body:has(.dragtip) .selbar{display:none}
+.sb-row{display:flex;align-items:center;gap:6px}
+.sb-seg{display:flex;border:1px solid var(--line-2);border-radius:9px;overflow:hidden;flex:none}
+.sb-seg button{border:0;background:none;padding:0 12px;height:36px;font:inherit;font-size:13.5px;color:var(--ink-2);cursor:pointer}
+.sb-seg button.s[aria-pressed=true]{background:color-mix(in srgb,var(--signal) 22%,var(--panel));color:var(--signal);font-weight:600}
+.sb-seg button.n[aria-pressed=true]{background:color-mix(in srgb,var(--noise) 22%,var(--panel));color:var(--noise);font-weight:600}
+.sb-lab{flex:1;min-width:0;height:36px;border:1px solid color-mix(in srgb,var(--signal) 45%,transparent);border-radius:9px;background:none;padding:0 10px;font:inherit;font-size:13.5px;font-weight:600;color:var(--ink);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.sb-lab.empty{border-style:dashed;font-weight:400;color:var(--ink-3)}
+.sb-fill{flex:1}
+.sb-ic{flex:none;width:36px;height:36px;border:1px solid var(--line-2);border-radius:9px;background:none;font-size:15px;cursor:pointer;color:var(--ink)}
+.sb-ic.del:hover{border-color:var(--noise)}
+.sb-done{flex:none;height:36px;border:0;border-radius:9px;background:var(--ink);color:var(--bg);padding:0 12px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
+.sb-times{justify-content:space-between}
+.sb-step{display:flex;align-items:center;gap:4px}
+.sb-step .sb-l{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-right:2px}
+.sb-step button{width:36px;height:36px;border:1px solid var(--line-2);border-radius:9px;background:var(--panel-2);font-size:18px;line-height:1;color:var(--ink);cursor:pointer}
+.sb-step b{font-family:var(--f-mono);font-size:13px;font-weight:600;min-width:52px;text-align:center}
+.sb-dur{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-3)}
+@media (max-width:420px){.sb-step .sb-l{display:none}.sb-step b{min-width:46px}}
+.areamenu.sheet{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;max-width:none;border-radius:16px 16px 0 0;max-height:72vh;overflow:auto;padding:10px 10px calc(10px + env(safe-area-inset-bottom))}
+.areamenu.sheet .am-opt .am-name,.areamenu.sheet .am-x{min-height:42px}
+.areamenu.sheet .am-in{font-size:16px;padding:9px 11px}
 .evt{position:absolute;left:4px;right:6px;border-radius:6px;border-left:3px solid;padding:3px 8px;font-size:12px;line-height:1.3;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-start;outline-offset:1px}
 .edit .evt{cursor:grab}
 .day.dragging .evt{cursor:grabbing}
@@ -1620,7 +1655,8 @@ function scorePane(p){
 
   var body=el("div","pane-body");
   body.appendChild(dayColumn(date,p.k,mine));
-  if(mine)body.appendChild(el("div","empty",(matchMedia("(pointer:coarse)").matches?"Press and hold, then drag":"Drag")+" to mark signal, in 15-minute steps. Click a block to switch signal ↔ noise; Backspace (or ×) deletes the selected block. Drag it to move, or its edges to resize; ✂ splits it in two, and the label chip says what it was."));
+  if(mine&&matchMedia("(pointer:coarse)").matches)body.appendChild(el("div","empty","Tap empty time to add an hour, or press and hold, then drag. Tap a block to select it: drag it or its handles to move or resize, or use the bar at the bottom. Tap it again to switch signal ↔ noise."));
+  else if(mine)body.appendChild(el("div","empty","Drag to mark signal, in 15-minute steps. Click a block to switch signal ↔ noise; Backspace (or ×) deletes the selected block. Drag it to move, or its edges to resize; ✂ splits it in two, and the label chip says what it was."));
 
   var e=getEntry(date,p.k);
   if(e&&e.blocks.length){
@@ -1793,6 +1829,58 @@ function dayColumn(date,person,editable){
       if(r)commit(withoutRun(hours,r));else render();
     };
     setTimeout(function(){var b=col.querySelector(".evt.sel");if(b&&!drag&&!isEditing())b.focus({preventScroll:true});},0);
+    var sr=runAt(runsOf(hours),selSlot);
+    if(sr)day.appendChild(selBar(sr));
+  }
+
+  /* Nudge one edge of a block by 15 minutes. Growing takes the slot from
+     whatever is there; shrinking hands it to a block touching that edge. */
+  function nudge(r,edge,delta){
+    var h=Object.assign({},hours),last=SLOTS.length-1,na=r.a;
+    var up=r.a>0?hours[SLOTS[r.a-1]]||"":"",dn=r.b<last?hours[SLOTS[r.b+1]]||"":"";
+    if(edge==="a"&&delta<0){if(r.a===0)return;h[SLOTS[r.a-1]]=r.v;na=r.a-1;}
+    else if(edge==="a"){if(r.a===r.b)return;if(up)h[SLOTS[r.a]]=up;else delete h[SLOTS[r.a]];na=r.a+1;}
+    else if(delta>0){if(r.b===last)return;h[SLOTS[r.b+1]]=r.v;}
+    else{if(r.a===r.b)return;if(dn)h[SLOTS[r.b]]=dn;else delete h[SLOTS[r.b]];}
+    select(na);commit(h);
+  }
+  function selBar(r){
+    var p=parseV(r.v),len=r.b-r.a+1;
+    var bar=el("div","selbar");bar.setAttribute("role","toolbar");bar.setAttribute("aria-label","Selected block");
+    var top=el("div","sb-row");
+    var seg=el("div","sb-seg");
+    [["s","Signal"],["n","Noise"]].forEach(function(o){
+      var b=el("button","sb-k "+o[0],o[1]);b.setAttribute("aria-pressed",String(p.kind===o[0]));
+      b.onclick=function(){if(p.kind!==o[0])cycle(r);};
+      seg.appendChild(b);
+    });
+    top.appendChild(seg);
+    if(p.kind==="s"){
+      var lb=el("button","sb-lab"+(p.area?"":" empty"),p.area||"+ Label");
+      lb.onclick=function(){openAreaMenu(date,person,r.a);};
+      top.appendChild(lb);
+    }else top.appendChild(el("span","sb-fill"));
+    if(len>1){var sp=el("button","sb-ic","✂");sp.title="Split in two";sp.setAttribute("aria-label","Split in two");sp.onclick=function(){split(r);};top.appendChild(sp);}
+    var del=el("button","sb-ic del","🗑");del.title="Delete";del.setAttribute("aria-label","Delete block");del.onclick=function(){if(selDelete)selDelete();};
+    top.appendChild(del);
+    var done=el("button","sb-done","Done");done.onclick=function(){sel=null;selDelete=null;render();};
+    top.appendChild(done);
+    bar.appendChild(top);
+
+    var times=el("div","sb-row sb-times");
+    function stepper(lab,edge,val){
+      var w=el("div","sb-step");
+      w.appendChild(el("span","sb-l",lab));
+      var m=el("button",null,"−");m.setAttribute("aria-label",lab+" 15 minutes earlier");m.onclick=function(){nudge(r,edge,-1);};
+      var pl=el("button",null,"+");pl.setAttribute("aria-label",lab+" 15 minutes later");pl.onclick=function(){nudge(r,edge,1);};
+      w.appendChild(m);w.appendChild(el("b",null,val));w.appendChild(pl);
+      return w;
+    }
+    times.appendChild(stepper("Start","a",slotLabel(r.a)));
+    times.appendChild(el("span","sb-dur",fmtDur(len)));
+    times.appendChild(stepper("End","b",slotLabel(r.b+1)));
+    bar.appendChild(times);
+    return bar;
   }
 
   function idxAt(y){
@@ -1817,13 +1905,44 @@ function dayColumn(date,person,editable){
     }
     return h;
   }
-  function arm(){
+  function arm(quiet){
     if(!drag)return;
     drag.armed=true;
     col.classList.add("armed");day.classList.add("dragging");
-    if(navigator.vibrate)try{navigator.vibrate(8);}catch(e){}
+    if(!quiet&&navigator.vibrate)try{navigator.vibrate(8);}catch(e){}
+    drag.raf=requestAnimationFrame(autoScroll);
+  }
+  /* Near the top or bottom of the screen the page scrolls along, so a drag
+     can reach any time of day. */
+  function autoScroll(){
+    if(!drag||!drag.armed)return;
+    var y=drag.lastY,barEl=document.querySelector(".selbar");
+    var lo=70,hi=window.innerHeight-(barEl?barEl.offsetHeight:0)-70,v=0;
+    if(y<lo)v=-(lo-y)/3;else if(y>hi)v=(y-hi)/3;
+    v=Math.max(-22,Math.min(22,v));
+    if(v){window.scrollBy(0,v);update(y);}
+    drag.raf=requestAnimationFrame(autoScroll);
+  }
+  /* While dragging, the finger hides the block: show its times up top. */
+  var tip=null;
+  function showTip(d){
+    var lo,hi;
+    if(d.mode==="paint"){lo=Math.min(d.start,d.cur);hi=Math.max(d.start,d.cur);}
+    else if(d.mode==="resize"){lo=Math.min(d.anchor,d.cur);hi=Math.max(d.anchor,d.cur);}
+    else{var len=d.run.b-d.run.a+1;lo=Math.max(0,Math.min(SLOTS.length-len,d.run.a+d.cur-d.start));hi=lo+len-1;}
+    if(!tip){tip=el("div","dragtip");document.body.appendChild(tip);}
+    tip.textContent=spanText(lo,hi)+" · "+fmtDur(hi-lo+1);
+  }
+  function update(y){
+    var i=idxAt(y);
+    if(i===drag.cur)return;
+    drag.cur=i;drag.moved=true;
+    drawRuns(col,preview(drag),true,cycle,drag.selRun?drag.run.a:null);
+    showTip(drag);
   }
   function stop(){
+    if(tip){tip.remove();tip=null;}
+    if(drag&&drag.raf)cancelAnimationFrame(drag.raf);
     if(drag&&drag.timer)clearTimeout(drag.timer);
     window.removeEventListener("pointermove",onMove);
     window.removeEventListener("pointerup",onUp);
@@ -1839,10 +1958,8 @@ function dayColumn(date,person,editable){
       if(Math.abs(ev.clientY-drag.y0)>8||Math.abs(ev.clientX-drag.x0)>8){stop();drawRuns(col,hours,true,cycle);}
       return;
     }
-    var i=idxAt(ev.clientY);
-    if(i===drag.cur)return;
-    drag.cur=i;drag.moved=true;
-    drawRuns(col,preview(drag),true,cycle);
+    drag.lastY=ev.clientY;
+    update(ev.clientY);
   }
   function onUp(ev){
     if(!drag||ev.pointerId!==drag.id)return;
@@ -1853,7 +1970,12 @@ function dayColumn(date,person,editable){
       else{var len=d.run.b-d.run.a+1;select(Math.max(0,Math.min(SLOTS.length-len,d.run.a+d.cur-d.start)));}
       commit(preview(d));return;
     }
-    if(d.run)cycle(d.run);
+    /* On touch a tap first selects; tapping the selected block switches it. */
+    if(d.run){
+      if(d.touch&&!d.selRun){select(d.run.a);render();return;}
+      cycle(d.run);
+    }
+    else if(d.touch&&sel){sel=null;selDelete=null;render();}
     else{
       /* A tap on empty space drops in an hour, stopping short of the next block. */
       var end=d.start;
@@ -1877,8 +1999,9 @@ function dayColumn(date,person,editable){
     var i=idxAt(ev.clientY);
     var run=runAt(runsOf(hours),i);
     var grip=ev.target.closest&&ev.target.closest(".grip");
-    var d={id:ev.pointerId,start:i,cur:i,run:run,moved:false,x0:ev.clientX,y0:ev.clientY,armed:false,
-      mode:run?(grip?"resize":"move"):"paint",nid:sid()};
+    var d={id:ev.pointerId,start:i,cur:i,run:run,moved:false,x0:ev.clientX,y0:ev.clientY,lastY:ev.clientY,armed:false,
+      mode:run?(grip?"resize":"move"):"paint",nid:sid(),touch:ev.pointerType==="touch",
+      selRun:!!(run&&sel&&sel.date===date&&sel.person===person&&sel.slot>=run.a&&sel.slot<=run.b)};
     if(d.mode==="resize"){
       var top=grip.dataset.edge==="top";
       d.anchor=top?run.b:run.a;
@@ -1891,7 +2014,10 @@ function dayColumn(date,person,editable){
     window.addEventListener("pointercancel",onCancel);
     if(ev.pointerType==="touch"){
       col.addEventListener("touchmove",blockScroll,{passive:false});
-      d.timer=setTimeout(arm,260);
+      /* The selected block (and its handles) drags straight away; anywhere
+         else needs a press-and-hold so the page can still scroll. */
+      if(d.selRun)arm(true);
+      else d.timer=setTimeout(arm,260);
     }else{
       ev.preventDefault();
       arm();
@@ -1950,6 +2076,7 @@ function closeAreaMenu(quiet){
   var m=areaMenu;areaMenu=null;
   m.el.remove();
   document.removeEventListener("pointerdown",m.away,true);
+  if(m.vvFix&&window.visualViewport){window.visualViewport.removeEventListener("resize",m.vvFix);window.visualViewport.removeEventListener("scroll",m.vvFix);}
   if(m.changed&&!quiet)render();
 }
 
@@ -2041,12 +2168,23 @@ function openAreaMenu(date,person,slot,toDetails){
   m.appendChild(dl);
   document.body.appendChild(m);
 
-  var ar=anchor.getBoundingClientRect(),w=m.offsetWidth,h=m.offsetHeight;
-  var left=ar.right+8;
-  if(left+w>window.innerWidth-8)left=Math.max(8,Math.min(window.innerWidth-w-8,ar.left));
-  var top=left>=ar.right?ar.top:ar.bottom+6;
-  if(top+h>window.innerHeight-8)top=Math.max(8,left>=ar.right?window.innerHeight-h-8:ar.top-h-6);
-  m.style.left=(left+window.scrollX)+"px";m.style.top=(top+window.scrollY)+"px";
+  var vvFix=null;
+  if(window.innerWidth<640){
+    /* Phones get a sheet along the bottom, lifted above the keyboard. */
+    m.classList.add("sheet");
+    var vv=window.visualViewport;
+    if(vv){
+      vvFix=function(){m.style.bottom=Math.max(0,window.innerHeight-vv.height-vv.offsetTop)+"px";};
+      vv.addEventListener("resize",vvFix);vv.addEventListener("scroll",vvFix);vvFix();
+    }
+  }else{
+    var ar=anchor.getBoundingClientRect(),w=m.offsetWidth,h=m.offsetHeight;
+    var left=ar.right+8;
+    if(left+w>window.innerWidth-8)left=Math.max(8,Math.min(window.innerWidth-w-8,ar.left));
+    var top=left>=ar.right?ar.top:ar.bottom+6;
+    if(top+h>window.innerHeight-8)top=Math.max(8,left>=ar.right?window.innerHeight-h-8:ar.top-h-6);
+    m.style.left=(left+window.scrollX)+"px";m.style.top=(top+window.scrollY)+"px";
+  }
 
   /* Closing from a click elsewhere: redraw after that click has run its course. */
   var away=function(ev){
@@ -2055,7 +2193,7 @@ function openAreaMenu(date,person,slot,toDetails){
     closeAreaMenu(true);
     if(changed)setTimeout(softRender,0);
   };
-  areaMenu={el:m,away:away};
+  areaMenu={el:m,away:away,vvFix:vvFix};
   setTimeout(function(){
     if(areaMenu&&areaMenu.el===m)document.addEventListener("pointerdown",away,true);
   },0);
@@ -2750,9 +2888,10 @@ document.addEventListener("keydown",function(ev){
   else if(ev.key==="Escape"){sel=null;selDelete=null;render();}
 });
 document.addEventListener("pointerdown",function(ev){
-  if(!sel||(ev.target.closest&&ev.target.closest(".day-col.edit,.areamenu")))return;
+  if(!sel||(ev.target.closest&&ev.target.closest(".day-col.edit,.areamenu,.selbar")))return;
   sel=null;selDelete=null;
   Array.prototype.slice.call(document.querySelectorAll(".evt.sel")).forEach(function(b){b.classList.remove("sel");var x=b.querySelector(".del");if(x)x.remove();});
+  Array.prototype.slice.call(document.querySelectorAll(".selbar")).forEach(function(b){b.remove();});
 },true);
 
 /* A text field keeps its own native undo while it has edits of its own;
