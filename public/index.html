@@ -218,7 +218,7 @@ textarea:focus{border-color:var(--line-2);background:var(--panel);outline:none}
 .lbl{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
 
 /* ---- day column (score) ---- */
-.day{--hh:52.8px;display:grid;grid-template-columns:40px 1fr;user-select:none;-webkit-user-select:none;padding-top:7px}
+.day{--hh:48px;display:grid;grid-template-columns:40px 1fr;user-select:none;-webkit-user-select:none;padding-top:7px}
 .day-labs{position:relative}
 .day-labs span{position:absolute;right:8px;transform:translateY(-50%);font-family:var(--f-mono);font-size:10px;color:var(--ink-3);letter-spacing:-.03em;white-space:nowrap}
 .day-col{position:relative;height:calc(24 * var(--hh));border-left:1px solid var(--line);border-bottom:1px solid var(--line);background:repeating-linear-gradient(to bottom,var(--line) 0 1px,transparent 1px var(--hh)),repeating-linear-gradient(to bottom,transparent 0 calc(var(--hh) / 2),color-mix(in srgb,var(--line) 45%,transparent) calc(var(--hh) / 2) calc(var(--hh) / 2 + 1px),transparent calc(var(--hh) / 2 + 1px) var(--hh))}
@@ -226,7 +226,7 @@ textarea:focus{border-color:var(--line-2);background:var(--panel);outline:none}
 .day-col.armed{touch-action:none}
 .edit .evt.sel{touch-action:none}
 @media (pointer:coarse){
-  .day{--hh:67.2px}
+  .day{--hh:61px}
   .evt .del,.evt .split{display:none!important}
   .edit .evt.sel{overflow:visible}
   .edit .evt.sel .grip{height:30px}
