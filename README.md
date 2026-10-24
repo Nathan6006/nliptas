@@ -14,12 +14,12 @@ Live at **https://nliptas.pages.dev**
   (`10-1045`, `9-sleep`), the way the spreadsheet had them. Underneath is a
   running task list per person that carries over day to day, with optional due
   dates and nested groups (groups, subgroups, tasks at any level).
-- **Score hours** — 6am to 6am as a calendar column in 15-minute steps. Drag to
+- **Score hours** — 6am to 6am as a calendar column in 5-minute steps. Drag to
   paint signal, click a block to switch signal ↔ noise, Backspace to delete.
   Blocks stay as drawn (neighbours never merge); ✂ splits one in two, and
   dragging the line between two touching blocks moves it.
   Selecting a block brings up a bar with signal/noise, label, split, delete
-  and ±15-minute start/end steppers. On phones: tap to select, then drag the
+  and ±5-minute start/end steppers. On phones: tap to select, then drag the
   block or its handles straight away; the page scrolls when you drag near the
   edge, and the label menu opens as a bottom sheet.
   Unscored time is left out of both sides of the ratio.
