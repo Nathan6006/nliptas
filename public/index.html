@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Plan the next day, score every 15 minutes from 6am to 6am as signal or noise, and track the ratio over time.">
+<meta name="description" content="Plan the next day, score every 5 minutes from 6am to 6am as signal or noise, and track the ratio over time.">
 <meta name="color-scheme" content="light dark">
 <style>
 :root{color-scheme:light dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -302,7 +302,7 @@ body:has(.areamenu) .selbar,body:has(.dragtip) .selbar{display:none}
 .hdate small{display:block;font-family:var(--f-mono);font-weight:400;font-size:10.5px;color:var(--ink-3)}
 .hpair{display:flex;flex-direction:column;gap:6px;min-width:0}
 .hline{display:grid;grid-template-columns:62px 1fr 152px;gap:9px;align-items:center}
-.strip{display:grid;grid-template-columns:repeat(96,1fr);height:13px;border-radius:3px;overflow:hidden;border:1px solid var(--line);background:repeating-linear-gradient(to right,transparent 0 calc(100%/24 - 1px),var(--line) calc(100%/24 - 1px) calc(100%/24)),var(--panel-2)}
+.strip{display:grid;grid-template-columns:repeat(288,1fr);height:13px;border-radius:3px;overflow:hidden;border:1px solid var(--line);background:repeating-linear-gradient(to right,transparent 0 calc(100%/24 - 1px),var(--line) calc(100%/24 - 1px) calc(100%/24)),var(--panel-2)}
 .strip i.s{background:var(--signal)}
 .strip i.n{background:var(--noise)}
 .hname{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:5px}
@@ -374,9 +374,12 @@ var PEOPLE=[{k:"nathan",n:"Nathan",c:"var(--nathan)"},{k:"karan",n:"Karan",c:"va
 var STATES=["s","n"];
 var STATE_LABEL={s:"Signal",n:"Noise"};
 var MARK={s:"S",n:"N"};
-/* The day is scored in 15-minute slots keyed "H:MM" (6:00 … 2:45). */
+/* The day is scored in 5-minute slots keyed "H:MM" (6:00 … 5:55). Entries
+   saved before that were in 15-minute slots; `step` on an entry says which. */
+var STEP=5,PER_HOUR=60/STEP;
+var MINS=[];for(var mi=0;mi<60;mi+=STEP)MINS.push(String(mi).padStart(2,"0"));
 var SLOTS=[];
-HOURS.forEach(function(h){["00","15","30","45"].forEach(function(m){SLOTS.push(h+":"+m);});});
+HOURS.forEach(function(h){MINS.forEach(function(m){SLOTS.push(h+":"+m);});});
 var DOW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 var MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
@@ -396,12 +399,12 @@ function relDate(s){
 }
 function hourLabel(h){var ampm=h<12?"a":"p";var v=h%12;if(v===0)v=12;return v+ampm;}
 function slotLabel(i){
-  var h=i>=SLOTS.length?DAY_END:HOURS[Math.floor(i/4)],m=(i%4)*15;
+  var h=i>=SLOTS.length?DAY_END:HOURS[Math.floor(i/PER_HOUR)],m=(i%PER_HOUR)*STEP;
   var v=h%12;if(v===0)v=12;
-  return v+(m?":"+m:"")+(h<12?"a":"p");
+  return v+(m?":"+String(m).padStart(2,"0"):"")+(h<12?"a":"p");
 }
 function fmtH(v){return String(Math.round(v*100)/100);}
-function fmtDur(q){var h=Math.floor(q/4),m=(q%4)*15;return(h?h+"h":"")+(h&&m?" ":"")+(m?m+"m":"");}
+function fmtDur(q){var h=Math.floor(q/PER_HOUR),m=(q%PER_HOUR)*STEP;return(h?h+"h":"")+(h&&m?" ":"")+(m?m+"m":"");}
 
 /* ---------------- state ---------------- */
 var state={
@@ -433,18 +436,28 @@ var tasksLoaded=false;
 var entriesLoaded=false;
 
 function key(date,person){return date+"__"+person;}
-function blank(date,person){return{date:date,person:person,blocks:[],tasks:"",hours:{},areas:{},segs:{},notes:{}};}
-/* Older entries rated whole hours (key "9") and had an N/A mark. Spread each
-   hour over its four quarters and drop N/A, which now just means blank. */
+function blank(date,person){return{date:date,person:person,step:STEP,blocks:[],tasks:"",hours:{},areas:{},segs:{},notes:{}};}
+/* The 5-minute slots a stored key covers. Older entries rated whole hours
+   (key "9"), then quarters ("9:15", when `legacy`): each spreads over the
+   slots it spans. */
+function slotsOf(k,legacy){
+  if(/^\d{1,2}$/.test(k))return MINS.map(function(m){return k+":"+m;});
+  var m=/^(\d{1,2}):(\d\d)$/.exec(k),mm=m?+m[2]:-1;
+  if(mm<0||mm>=60||mm%STEP)return[];
+  if(!legacy)return[k];
+  if(mm%15)return[];
+  return[mm,mm+5,mm+10].map(function(x){return m[1]+":"+String(x).padStart(2,"0");});
+}
+function regrid(o,legacy){
+  var out={};
+  if(!o||typeof o!=="object")return out;
+  for(var k in o)slotsOf(k,legacy).forEach(function(nk){if(!(nk in out))out[nk]=o[k];});
+  return out;
+}
+/* Older entries also had an N/A mark, which now just means blank. */
 function normHours(h){
   var out={};
-  if(!h||typeof h!=="object")return out;
-  for(var k in h){
-    var v=h[k];
-    if(v!=="s"&&v!=="n")continue;
-    if(/^\d{1,2}$/.test(k))["00","15","30","45"].forEach(function(m){if(!out[k+":"+m])out[k+":"+m]=v;});
-    else if(/^\d{1,2}:(00|15|30|45)$/.test(k))out[k]=v;
-  }
+  for(var k in h){if(h[k]==="s"||h[k]==="n")out[k]=h[k];}
   return out;
 }
 /* What a signal slot was spent on: slot -> area name, only on signal slots. */
@@ -470,7 +483,15 @@ function normNotes(n,segs){
   for(var id in n){if(live[id]&&typeof n[id]==="string"&&n[id].trim())out[id]=n[id].slice(0,200);}
   return out;
 }
-function normAll(o){for(var id in o){if(o[id]){o[id].hours=normHours(o[id].hours);o[id].areas=normAreas(o[id].areas,o[id].hours);o[id].segs=normSegs(o[id].segs,o[id].hours);o[id].notes=normNotes(o[id].notes,o[id].segs);}}return o;}
+function normEntry(e){
+  var legacy=e.step!==STEP;
+  e.hours=normHours(regrid(e.hours,legacy));
+  e.areas=normAreas(regrid(e.areas,legacy),e.hours);
+  e.segs=normSegs(regrid(e.segs,legacy),e.hours);
+  e.notes=normNotes(e.notes,e.segs);
+  e.step=STEP;
+}
+function normAll(o){for(var id in o){if(o[id])normEntry(o[id]);}return o;}
 function getEntry(date,person){return entries[key(date,person)]||null;}
 function ensure(date,person){
   var id=key(date,person);
@@ -497,7 +518,8 @@ function sampleData(){
 /* ---------------- tallies ---------------- */
 function tally(h){
   var t={s:0,n:0};
-  for(var k in h){if(h[k]==="s")t.s+=.25;else if(h[k]==="n")t.n+=.25;}
+  for(var k in h){if(h[k]==="s")t.s++;else if(h[k]==="n")t.n++;}
+  t.s/=PER_HOUR;t.n/=PER_HOUR;
   t.counted=t.s+t.n;t.logged=t.counted;
   return t;
 }
@@ -626,7 +648,7 @@ function payloadFor(ids){
   ids.forEach(function(id){
     var e=entries[id];
     if(!e||!e.date||!e.person)return;
-    out.push({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{},segs:e.segs||{},notes:e.notes||{}});
+    out.push({date:e.date,person:e.person,step:e.step,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{},segs:e.segs||{},notes:e.notes||{}});
   });
   return out;
 }
@@ -643,7 +665,7 @@ function flush(){
     ids.forEach(function(id){
       var e=entries[id];
       if(!e)return;
-      ops.push(function(){return db.collection("entries").doc(id).set({date:e.date,person:e.person,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{},segs:e.segs||{},notes:e.notes||{},updatedAt:new Date().toISOString()});});
+      ops.push(function(){return db.collection("entries").doc(id).set({date:e.date,person:e.person,step:e.step,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{},segs:e.segs||{},notes:e.notes||{},updatedAt:new Date().toISOString()});});
     });
     who.forEach(function(p){
       ops.push(function(){return db.collection("tasks").doc(p).set({items:tasks[p].items,groups:tasks[p].groups,migrated:tasks[p].migrated,areas:tasks[p].areas,updatedAt:new Date().toISOString()});});
@@ -707,7 +729,7 @@ function connectClaude(){
     var fresh={};
     snap.docs.forEach(function(d){
       var v=d.data()||{};
-      fresh[d.id]={date:v.date||d.id.split("__")[0],person:v.person||d.id.split("__")[1],
+      fresh[d.id]={date:v.date||d.id.split("__")[0],person:v.person||d.id.split("__")[1],step:v.step,
         blocks:Array.isArray(v.blocks)?v.blocks:[],tasks:typeof v.tasks==="string"?v.tasks:"",
         hours:v.hours&&typeof v.hours==="object"?v.hours:{},areas:v.areas&&typeof v.areas==="object"?v.areas:{},segs:v.segs&&typeof v.segs==="object"?v.segs:{},notes:v.notes&&typeof v.notes==="object"?v.notes:{}};
     });
@@ -1656,7 +1678,7 @@ function scorePane(p){
   var body=el("div","pane-body");
   body.appendChild(dayColumn(date,p.k,mine));
   if(mine&&matchMedia("(pointer:coarse)").matches)body.appendChild(el("div","empty","Tap empty time to add an hour, or press and hold, then drag. Tap a block to select it: drag it or its handles to move or resize, or use the bar at the bottom. Tap it again to switch signal ↔ noise."));
-  else if(mine)body.appendChild(el("div","empty","Drag to mark signal, in 15-minute steps. Click a block to switch signal ↔ noise; Backspace (or ×) deletes the selected block. Drag it to move, or its edges to resize; ✂ splits it in two, and the label chip says what it was."));
+  else if(mine)body.appendChild(el("div","empty","Drag to mark signal, in 5-minute steps. Click a block to switch signal ↔ noise; Backspace (or ×) deletes the selected block. Drag it to move, or its edges to resize; ✂ splits it in two, and the label chip says what it was."));
 
   var e=getEntry(date,p.k);
   if(e&&e.blocks.length){
@@ -1676,7 +1698,7 @@ function scorePane(p){
   return pane;
 }
 
-/* Calendar-style day column in 15-minute slots. Contiguous slots with the same
+/* Calendar-style day column in 5-minute slots. Contiguous slots with the same
    mark draw as one block. Drag on empty space to paint signal; drag a block to
    move it, its edges to resize; click a block to cycle signal → noise → blank.
    On touch, press and hold to start a drag so the page still scrolls. */
@@ -1738,9 +1760,9 @@ function drawRuns(col,hours,editable,onCycle,selSlot){
     var isSel=editable&&selSlot!=null&&selSlot>=r.a&&selSlot<=r.b;
     var kind=kindOf(r.v),area=areaOf(r.v);
     var name=STATE_LABEL[kind]+(area?" · "+area:"");
-    var b=el("div","evt "+kind+(len===1?" tiny":len<4?" one":"")+(isSel?" sel":""));
-    b.style.top="calc("+r.a+" * var(--hh) / 4 + 1px)";
-    b.style.height="calc("+len+" * var(--hh) / 4 - 2px)";
+    var b=el("div","evt "+kind+(len*STEP<=15?" tiny":len<PER_HOUR?" one":"")+(isSel?" sel":""));
+    b.style.top="calc("+r.a+" * var(--hh) / "+PER_HOUR+" + 1px)";
+    b.style.height="max(2px, calc("+len+" * var(--hh) / "+PER_HOUR+" - 2px))";
     b.dataset.a=r.a;
     if(kind==="s"&&editable){
       /* Always-there label chip: the area, or a placeholder to add one. */
@@ -1809,7 +1831,7 @@ function dayColumn(date,person,editable){
     select(r.a);
     commit(fill(withoutRun(hours,r),r.a,r.b,mk("n",p.id||sid(),"")));
   }
-  /* Halve a block (on a 15-minute line) so each part can be labeled or
+  /* Halve a block (on a 5-minute line) so each part can be labeled or
      marked on its own; the lower half is selected. */
   function split(r){
     if(r.b<=r.a)return;
@@ -1833,7 +1855,7 @@ function dayColumn(date,person,editable){
     if(sr)day.appendChild(selBar(sr));
   }
 
-  /* Nudge one edge of a block by 15 minutes. Growing takes the slot from
+  /* Nudge one edge of a block by 5 minutes. Growing takes the slot from
      whatever is there; shrinking hands it to a block touching that edge. */
   function nudge(r,edge,delta){
     var h=Object.assign({},hours),last=SLOTS.length-1,na=r.a;
@@ -1871,8 +1893,8 @@ function dayColumn(date,person,editable){
     function stepper(lab,edge,val){
       var w=el("div","sb-step");
       w.appendChild(el("span","sb-l",lab));
-      var m=el("button",null,"−");m.setAttribute("aria-label",lab+" 15 minutes earlier");m.onclick=function(){nudge(r,edge,-1);};
-      var pl=el("button",null,"+");pl.setAttribute("aria-label",lab+" 15 minutes later");pl.onclick=function(){nudge(r,edge,1);};
+      var m=el("button",null,"−");m.setAttribute("aria-label",lab+" "+STEP+" minutes earlier");m.onclick=function(){nudge(r,edge,-1);};
+      var pl=el("button",null,"+");pl.setAttribute("aria-label",lab+" "+STEP+" minutes later");pl.onclick=function(){nudge(r,edge,1);};
       w.appendChild(m);w.appendChild(el("b",null,val));w.appendChild(pl);
       return w;
     }
@@ -1979,7 +2001,7 @@ function dayColumn(date,person,editable){
     else{
       /* A tap on empty space drops in an hour, stopping short of the next block. */
       var end=d.start;
-      while(end-d.start<3&&end+1<SLOTS.length&&!hours[SLOTS[end+1]])end++;
+      while(end-d.start<PER_HOUR-1&&end+1<SLOTS.length&&!hours[SLOTS[end+1]])end++;
       commitSignal(fill(Object.assign({},hours),d.start,end,mk("s",d.nid,"")),d.start);
     }
   }
@@ -2239,10 +2261,10 @@ function historyView(){
       nm.appendChild(d);nm.appendChild(el("span",null,p.n));
       line.appendChild(nm);
       var strip=el("div","strip");
-      SLOTS.forEach(function(sk,si){
-        var c=(e&&e.hours[sk])||"";
-        var cell=el("i",c);
-        cell.title=slotLabel(si)+" — "+(c?STATE_LABEL[c]:"not rated");
+      runsOf(e?e.hours:{}).forEach(function(r){
+        var cell=el("i",r.v);
+        cell.style.gridColumn=(r.a+1)+" / "+(r.b+2);
+        cell.title=spanText(r.a,r.b)+" — "+STATE_LABEL[r.v];
         strip.appendChild(cell);
       });
       line.appendChild(strip);
@@ -2656,10 +2678,10 @@ function areasCard(dates){
       for(var k in e.hours){
         if(e.hours[k]!=="s")continue;
         var a=(e.areas&&e.areas[k])||"";
-        tot[a]=(tot[a]||0)+.25;all+=.25;
+        tot[a]=(tot[a]||0)+1/PER_HOUR;all+=1/PER_HOUR;
         if(!days[a])days[a]={};days[a][d]=1;
         var nt=e.segs&&e.notes?(e.notes[e.segs[k]]||"").trim():"";
-        if(nt){if(!dets[a])dets[a]={};dets[a][nt]=(dets[a][nt]||0)+.25;}
+        if(nt){if(!dets[a])dets[a]={};dets[a][nt]=(dets[a][nt]||0)+1/PER_HOUR;}
       }
     });
     var col=el("div","area-col");
@@ -2741,7 +2763,7 @@ function heatCard(series,dates){
         var e=getEntry(date,p.k);
         if(!e)return;
         var hs=0,hn=0;
-        ["00","15","30","45"].forEach(function(m){var v=e.hours[h+":"+m];if(v==="s")hs++;else if(v==="n")hn++;});
+        MINS.forEach(function(m){var v=e.hours[h+":"+m];if(v==="s")hs++;else if(v==="n")hn++;});
         if(hs+hn){s+=hs/(hs+hn);c++;}
       });
       var share=c?s/c:null;

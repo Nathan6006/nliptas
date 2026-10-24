@@ -2,8 +2,9 @@
  * Shared ledger API for Signal Ledger, on Cloudflare Pages Functions + KV.
  *
  * One KV key per person per month: `ledger:<person>:<YYYY-MM>`, holding
- * { "<YYYY-MM-DD>": { blocks, tasks, hours, areas, segs, updatedAt } }. `areas`
- * maps a signal slot to what it was spent on; `segs` maps a slot to the id of
+ * { "<YYYY-MM-DD>": { step, blocks, tasks, hours, areas, segs, updatedAt } }.
+ * `step` is 5 for days in 5-minute slots; days without it are in 15-minute
+ * slots and the client spreads them out on load. `areas` maps a signal slot to what it was spent on; `segs` maps a slot to the id of
  * the block it belongs to, so adjacent blocks stay separate; `notes` maps a
  * block id to optional details beyond its label. Each person only
  * ever writes their own keys, so the two of you never clobber each other —
@@ -56,9 +57,9 @@ function cleanBlocks(v) {
 function cleanHours(v) {
   const out = {};
   if (!v || typeof v !== "object") return out;
-  // Keys are 15-minute slots, "H:MM" with H 0-23 and MM 00/15/30/45.
+  // Keys are slots, "H:MM" with H 0-23 and MM a multiple of 5.
   for (const k of Object.keys(v)) {
-    const m = /^(\d{1,2}):(00|15|30|45)$/.exec(k);
+    const m = /^(\d{1,2}):([0-5][05])$/.exec(k);
     if (!m || Number(m[1]) > 23) continue;
     if (v[k] === "s" || v[k] === "n") out[k] = v[k];
   }
@@ -164,6 +165,7 @@ async function readAll(env) {
       entries[`${date}__${person}`] = {
         date,
         person,
+        step: e.step,
         blocks: e.blocks || [],
         tasks: e.tasks || "",
         hours: e.hours || {},
@@ -209,6 +211,7 @@ async function writeBatch(request, env) {
       const hours = cleanHours(it.hours);
       const segs = cleanSegs(it.segs, hours);
       doc[it.date] = {
+        ...(it.step === 5 ? { step: 5 } : {}),
         blocks: cleanBlocks(it.blocks),
         tasks: str(it.tasks, MAX_TASKS),
         hours,
