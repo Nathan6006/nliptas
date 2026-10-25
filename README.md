@@ -1,16 +1,23 @@
 # Signal Ledger
 
-Two people plan the next day the night before, then score every hour of the day
-that just ended as **signal**, **noise**, or **N/A**. The ratio is tracked over
-time so the accountability is quantitative, not vibes.
+Plan the next day the night before, then score every hour of the day that just
+ended as **signal** or **noise**, side by side with a friend. The ratio is
+tracked over time so the accountability is quantitative, not vibes.
 
 Live at **https://nliptas.pages.dev**
 
 ## The system
 
+- **Accounts** — anyone can sign up with a username and password. You edit only
+  your own day; the right-hand side is whichever friend you pick from the menu
+  at the top.
+- **Friends** — send a request by username; once they accept, you can see each
+  other's scored hours. Plans (schedule and task list) stay private. The
+  Friends tab also has requests, change password and log out.
+
 - **Plan** — defaults to today, with Tomorrow as the next shortcut (Score hours
-  offers Yesterday instead). The day rolls over at 3am. Both schedules sit side by
-  side; you edit yours, you can always see the other. Time blocks are free text
+  offers Yesterday instead). The day rolls over at 3am. Only you see
+  your plan. Time blocks are free text
   (`10-1045`, `9-sleep`), the way the spreadsheet had them. Underneath is a
   running task list per person that carries over day to day, with optional due
   dates and nested groups (groups, subgroups, tasks at any level).
@@ -40,20 +47,26 @@ The headline number is signal ÷ (signal + noise). The raw S:N ratio sits beside
 | `signal-ledger.html` | The app. Single source of truth — edit this. |
 | `build.sh` | Wraps it into `public/index.html` for static hosting. |
 | `public/index.html` | Generated. Committed so Pages needs no build step. |
-| `functions/api/ledger.js` | Pages Function: the shared ledger on Cloudflare KV. |
+| `functions/api/[[path]].js` | Pages Function: accounts, friends and the ledger on Cloudflare KV. |
+| `scripts/seed-accounts.mjs` | One-off that created the nliu and kbahl accounts over the existing data. |
 
 Run `./build.sh` after every edit to `signal-ledger.html`.
 
-The same file also runs as a claude.ai artifact, where it uses that runtime's
-shared store instead of the API. Storage is picked at load in this order:
-claude.ai db → `/api/ledger` → this browser's localStorage.
-
 ## Storage
 
-One KV key per person per month: `ledger:<person>:<YYYY-MM>`, holding every day
-in that month. Each person only writes their own keys, so you two can never
-clobber each other. Every write is mirrored to localStorage, so a dropped
-connection costs nothing.
+| KV key | Holds |
+| --- | --- |
+| `user:<username>` | Password hash, and `store`: where that person's data lives. |
+| `social:<username>` | Friends, incoming and outgoing requests. |
+| `months:<store>` | Which months have a ledger doc. |
+| `ledger:<store>:<YYYY-MM>` | Every day in that month. |
+| `tasks:<store>` | The running task list. |
+
+`store` is the username for everyone who signs up. The two original accounts
+point at the data from before accounts existed: `nliu` → `nathan`, `kbahl` →
+`karan`, so none of it moved (those two names can't be registered). Each person
+only writes their own keys. The browser keeps a copy per account, and edits
+made offline are sent once the connection is back.
 
 ## First-time setup
 
@@ -61,13 +74,12 @@ connection costs nothing.
 npx wrangler login
 npx wrangler kv namespace create LEDGER      # put the id in wrangler.toml
 npx wrangler pages project create nliptas --production-branch main
-npx wrangler pages secret put LEDGER_KEY --project-name nliptas   # shared passphrase
+openssl rand -base64 48 | npx wrangler pages secret put SESSION_SECRET --project-name nliptas
 ./build.sh && npx wrangler pages deploy public --project-name nliptas
 ```
 
-`LEDGER_KEY` is the shared passphrase the site asks for once per device. It
-lives only in Cloudflare — never in this repo. With it unset the API is open to
-anyone who finds the URL.
+`SESSION_SECRET` signs the sign-in cookies. It lives only in Cloudflare, never
+in this repo; changing it signs everyone out. The API refuses to run without it.
 
 ## Deploying an update
 
