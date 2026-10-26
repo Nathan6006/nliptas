@@ -1,4 +1,4 @@
-# Signal Ledger
+# Signal to Noise
 
 Plan the next day the night before, then score every hour of the day that just
 ended as **signal** or **noise**, side by side with a friend. The ratio is

@@ -1,4 +1,4 @@
-<title>Signal Ledger</title>
+<title>Signal to Noise</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;500;700&family=Public+Sans:wght@400;500;600&display=swap">
 <style>
@@ -342,8 +342,22 @@ th{color:var(--ink-3);font-weight:500;font-size:10.5px;letter-spacing:.07em;text
 .form-err:empty{min-height:0}
 .form-ok{font-size:13px;color:var(--signal)}
 .linkish{border:0;background:none;color:var(--ink-2);font:inherit;font-size:13px;text-decoration:underline;text-underline-offset:2px;cursor:pointer;margin-top:14px;padding:4px}
-.vs{display:flex;align-items:center;gap:6px;color:var(--ink-2)}
-.vs-pick{font:inherit;font-size:12.5px;font-weight:600;color:var(--ink);background:var(--panel);border:1px solid var(--line-2);border-radius:999px;padding:4px 8px;max-width:9.5em}
+.vs{position:relative}
+.vs-btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line-2);background:var(--panel);border-radius:999px;padding:5px 10px 5px 12px;font-size:13px;color:var(--ink);cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.vs-btn:hover{border-color:var(--ink-3)}
+.vs-btn[aria-expanded="true"]{border-color:var(--ink-3);box-shadow:var(--shadow)}
+.vs-btn .vs-me{font-weight:600}
+.vs-btn .vs-x{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;color:var(--ink-3)}
+.vs-btn .vs-them{font-weight:600;max-width:9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vs-btn .vs-car{width:7px;height:7px;border-right:1.5px solid var(--ink-3);border-bottom:1.5px solid var(--ink-3);transform:translateY(-2px) rotate(45deg);margin-left:2px;transition:transform .15s}
+.vs-btn[aria-expanded="true"] .vs-car{transform:translateY(1px) rotate(-135deg)}
+.vsmenu{right:0;top:calc(100% + 6px);min-width:200px;max-height:min(60vh,360px);overflow-y:auto}
+.vsmenu .vs-h{font-family:var(--f-mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);padding:6px 10px 4px}
+.duemenu .vs-opt{justify-content:flex-start;align-items:center;gap:9px;font-weight:500}
+.duemenu .vs-opt .vs-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.duemenu .vs-opt span{font-family:var(--f-body);font-size:13.5px;color:var(--ink)}
+.duemenu .vs-opt[aria-checked="true"]{font-weight:700}
+.duemenu .vs-add{border-top:1px solid var(--line);border-radius:0 0 7px 7px;margin-top:4px;padding-top:9px;color:var(--ink-2)}
 .badge{display:inline-grid;place-items:center;min-width:17px;height:17px;margin-left:6px;padding:0 5px;border-radius:999px;background:var(--them);color:#fff;font-size:10.5px;font-weight:700;vertical-align:1px}
 .compare-empty{border-style:dashed;background:none;justify-content:center}
 .compare-empty .pane-body{align-items:center;text-align:center;padding:40px 22px;gap:8px}
@@ -365,7 +379,7 @@ th{color:var(--ink-3);font-weight:500;font-size:10.5px;letter-spacing:.07em;text
 .ghost.danger{border-color:var(--noise);color:var(--noise)}
 .pwform{max-width:360px;margin-bottom:14px}
 .pwform .ghost{border-style:solid}
-@media (max-width:560px){.vs>span:not(.dot){display:none}.saveflag{display:none}}
+@media (max-width:560px){.vs-btn .vs-me,.vs-btn .vs-dme{display:none}.vsmenu{right:auto;left:0}.saveflag{display:none}}
 .saveflag{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.06em}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -373,7 +387,7 @@ th{color:var(--ink-3);font-weight:500;font-size:10.5px;letter-spacing:.07em;text
 <header class="topbar">
   <div class="wrap bar">
     <div class="brand">
-      <h1>Signal Ledger</h1>
+      <h1>Signal to Noise</h1>
       <span class="tag">plan &middot; score &middot; compare</span>
     </div>
     <div class="who" id="who"></div>
@@ -541,6 +555,8 @@ function tally(h){
   t.counted=t.s+t.n;t.logged=t.counted;
   return t;
 }
+/* A day only counts as good (green) above this signal share. */
+var GOOD_PCT=67;
 function pct(t){return t.counted?Math.round(100*t.s/t.counted):null;}
 function ratioText(t){
   if(!t.counted)return"—";
@@ -879,7 +895,7 @@ function startPoll(){
 /* ---------------- render plumbing ---------------- */
 var pendingRender=false;
 function isEditing(){
-  if(drag||dueMenu||tdrag||areaMenu)return true;
+  if(drag||dueMenu||tdrag||areaMenu||vsClose)return true;
   var a=document.activeElement;
   return !!(a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA"));
 }
@@ -917,19 +933,74 @@ function renderWho(){
   w.appendChild(flag);
   var friends=account.friends||[];
   if(friends.length){
-    var lab=el("label","vs");
-    var dm=el("span","dot");dm.style.background="var(--me)";
-    lab.appendChild(dm);lab.appendChild(el("span",null,state.me+" vs"));
-    var s=document.createElement("select");s.className="vs-pick";s.setAttribute("aria-label","Compare with");
-    friends.forEach(function(f){var o=document.createElement("option");o.value=f;o.textContent=f;if(f===state.friend)o.selected=true;s.appendChild(o);});
-    s.onchange=function(){pickFriend(s.value);};
-    lab.appendChild(s);
-    w.appendChild(lab);
+    w.appendChild(vsPicker(friends));
   }else{
     var b=el("button","pill","+ Add a friend");
     b.onclick=function(){state.view="friends";render();};
     w.appendChild(b);
   }
+}
+
+/* Who's on the right: a button showing "you vs friend" that opens a menu of
+   your friends. Arrow keys move through it, Escape closes it. */
+var vsClose=null;
+function vsPicker(friends){
+  if(vsClose)vsClose();
+  var box=el("div","vs");
+  var b=el("button","vs-btn");
+  b.setAttribute("aria-haspopup","menu");b.setAttribute("aria-expanded","false");
+  b.setAttribute("aria-label","Comparing with "+state.friend+". Change who you compare with");
+  var dm=el("span","dot vs-dme");dm.style.background="var(--me)";
+  var dt=el("span","dot");dt.style.background="var(--them)";
+  b.appendChild(dm);b.appendChild(el("span","vs-me",state.me));
+  b.appendChild(el("span","vs-x","vs"));
+  b.appendChild(dt);b.appendChild(el("span","vs-them",state.friend||"pick"));
+  b.appendChild(el("span","vs-car"));
+  box.appendChild(b);
+  var menu=null;
+  function close(back){
+    if(!menu)return;
+    menu.remove();menu=null;vsClose=null;
+    b.setAttribute("aria-expanded","false");
+    document.removeEventListener("pointerdown",away,true);
+    document.removeEventListener("keydown",keys,true);
+    if(back)b.focus();
+  }
+  function away(e){if(!box.contains(e.target))close(false);}
+  function keys(e){
+    if(e.key==="Escape"){e.preventDefault();close(true);return;}
+    if(e.key==="Tab"){close(false);return;}
+    if(e.key!=="ArrowDown"&&e.key!=="ArrowUp")return;
+    e.preventDefault();
+    var items=[].slice.call(menu.querySelectorAll("button")),i=items.indexOf(document.activeElement);
+    i=e.key==="ArrowDown"?(i+1)%items.length:(i<=0?items.length-1:i-1);
+    items[i].focus();
+  }
+  b.onclick=function(){
+    if(menu){close(true);return;}
+    menu=el("div","duemenu vsmenu");menu.setAttribute("role","menu");
+    menu.appendChild(el("div","vs-h","Compare with"));
+    var cur=null;
+    friends.forEach(function(f){
+      var o=el("button","vs-opt");
+      o.setAttribute("role","menuitemradio");o.setAttribute("aria-checked",String(f===state.friend));
+      var d=el("span","dot");d.style.background=f===state.friend?"var(--them)":"var(--line-2)";
+      o.appendChild(d);o.appendChild(el("span","vs-n",f));
+      if(f===state.friend){o.appendChild(el("span","vs-ok","✓"));cur=o;}
+      o.onclick=function(){close(true);pickFriend(f);};
+      menu.appendChild(o);
+    });
+    var add=el("button","vs-add","+ Add a friend");add.setAttribute("role","menuitem");
+    add.onclick=function(){close(false);state.view="friends";render();};
+    menu.appendChild(add);
+    box.appendChild(menu);
+    b.setAttribute("aria-expanded","true");
+    vsClose=function(){close(false);};
+    document.addEventListener("pointerdown",away,true);
+    document.addEventListener("keydown",keys,true);
+    (cur||menu.querySelector("button")).focus();
+  };
+  return box;
 }
 
 function renderTabs(){
@@ -1217,7 +1288,7 @@ function scoreLine(t){
   var d=el("div","score");
   var p=pct(t);
   var big=el("span","big",p===null?"—":p+"%");
-  big.style.color=p===null?"var(--ink-3)":(p>=50?"var(--signal)":"var(--noise)");
+  big.style.color=p===null?"var(--ink-3)":(p>GOOD_PCT?"var(--signal)":"var(--noise)");
   d.appendChild(big);
   d.appendChild(el("span","chip hrs",fmtH(t.s)+"h S · "+fmtH(t.n)+"h N"));
   return d;
@@ -1885,8 +1956,7 @@ function scoreView(){
   var f=frag();
   var head=el("div","spread");
   var h=el("div");
-  h.appendChild(el("div","eyebrow","Rate the day that just happened"));
-  h.appendChild(el("h2",null,"Every hour is signal, noise, or off the books"));
+  h.appendChild(el("h2",null,"Rate the day that just happened"));
   head.appendChild(h);
   head.appendChild(legendRow());
   head.style.marginBottom="14px";
@@ -2506,7 +2576,7 @@ function historyView(){
       line.appendChild(strip);
       var pv=pct(t);
       var chip=el("div","chip",pv===null?"not scored":pv+"% · "+fmtH(t.s)+"h S · "+fmtH(t.n)+"h N");
-      if(pv!==null){chip.style.color=pv>=50?"var(--signal)":"var(--noise)";}
+      if(pv!==null){chip.style.color=pv>GOOD_PCT?"var(--signal)":"var(--noise)";}
       line.appendChild(chip);
       pair.appendChild(line);
     });
