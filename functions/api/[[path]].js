@@ -1,5 +1,5 @@
 /**
- * Signal Ledger API, on Cloudflare Pages Functions + KV.
+ * Signal to Noise API, on Cloudflare Pages Functions + KV.
  *
  * Accounts: `user:<username>` holds { username, store, salt, hash, iter, pwv,
  * createdAt } and is written only on sign-up and password change. `store`
