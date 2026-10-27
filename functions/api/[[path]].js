@@ -14,7 +14,8 @@
  * Ledger: one KV key per person per month, `ledger:<store>:<YYYY-MM>`, holding
  * { "<YYYY-MM-DD>": { step, blocks, tasks, hours, areas, segs, notes, updatedAt } }.
  * `step` is 5 for days in 5-minute slots; days without it are in 15-minute
- * slots and the client spreads them out on load. `areas` maps a signal slot to
+ * slots and the client spreads them out on load. `mid` marks a day in the
+ * midnight-to-midnight layout; days without it are moved over on first read. `areas` maps a signal slot to
  * what it was spent on; `segs` maps a slot to the id of the block it belongs
  * to, so adjacent blocks stay separate; `notes` maps a block id to optional
  * details beyond its label. Each person only ever writes their own keys.
@@ -366,14 +367,95 @@ async function monthsOf(env, store) {
   return out;
 }
 
+/* Days used to run 6am to 6am, so a slot from midnight to 6am on day D was
+   really the early morning of D+1. Days now run midnight to midnight; a day
+   without `mid` is still in the old layout. Moving those slots onto the next
+   day (latest first, so the next day is already settled) is deterministic,
+   so two reads racing each other write the same result. */
+function hourOf(k) { return Number(String(k).split(":")[0]); }
+// Spread an older entry's whole-hour or quarter keys into 5-minute slots.
+function fiveMinute(e) {
+  if (e.step === 5) return;
+  const spread = (o) => {
+    const out = {};
+    for (const k of Object.keys(o || {})) {
+      const m = /^(\d{1,2})(?::(\d\d))?$/.exec(k);
+      if (!m) continue;
+      const mins = m[2] == null ? [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]
+        : Number(m[2]) % 15 ? [] : [0, 5, 10].map((x) => Number(m[2]) + x);
+      for (const mm of mins) {
+        const nk = `${m[1]}:${String(mm).padStart(2, "0")}`;
+        if (!(nk in out)) out[nk] = o[k];
+      }
+    }
+    return out;
+  };
+  e.hours = spread(e.hours);
+  e.areas = spread(e.areas);
+  e.segs = spread(e.segs);
+  e.step = 5;
+}
+function nextDate(date) {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+async function toMidnightDays(env, store, months, docs) {
+  const where = {};
+  docs.forEach((doc, i) => { for (const date of Object.keys(doc || {})) where[date] = i; });
+  const dates = Object.keys(where).sort().reverse();
+  if (dates.every((d) => docs[where[d]][d].mid)) return docs;
+  const changed = new Set();
+  const added = [];
+  for (const date of dates) {
+    const e = docs[where[date]][date];
+    if (e.mid) continue;
+    e.mid = 1;
+    changed.add(where[date]);
+    const early = Object.keys(e.hours || {}).filter((k) => hourOf(k) < 6);
+    if (!early.length) continue;
+    fiveMinute(e);
+    const next = nextDate(date);
+    if (!(next in where)) {
+      const month = next.slice(0, 7);
+      let i = months.indexOf(month);
+      if (i < 0) { months.push(month); docs.push({}); i = docs.length - 1; added.push(month); }
+      docs[i][next] = { step: 5, mid: 1, blocks: [], tasks: "", hours: {}, areas: {}, segs: {}, notes: {} };
+      where[next] = i;
+    }
+    const t = docs[where[next]][next];
+    fiveMinute(t);
+    t.hours = t.hours || {}; t.areas = t.areas || {}; t.segs = t.segs || {}; t.notes = t.notes || {};
+    for (const k of Object.keys(e.hours)) {
+      if (hourOf(k) >= 6) continue;
+      if (!(k in t.hours)) {
+        t.hours[k] = e.hours[k];
+        if (e.areas && e.areas[k]) t.areas[k] = e.areas[k];
+        if (e.segs && e.segs[k]) {
+          t.segs[k] = e.segs[k];
+          if (e.notes && e.notes[e.segs[k]]) t.notes[e.segs[k]] = e.notes[e.segs[k]];
+        }
+      }
+      delete e.hours[k];
+      if (e.areas) delete e.areas[k];
+      if (e.segs) delete e.segs[k];
+    }
+    changed.add(where[next]);
+  }
+  if (added.length) await env.LEDGER.put(`months:${store}`, JSON.stringify([...months].sort()));
+  await Promise.all([...changed].map((i) => env.LEDGER.put(`ledger:${store}:${months[i]}`, JSON.stringify(docs[i]))));
+  return docs;
+}
+
 /* One person's days and task list, keyed by their username. For a friend
    (`own` false) the plan is left out: no schedule, no task text, no list. */
 async function readPerson(env, user, entries, tasks, own) {
   const months = await monthsOf(env, user.store);
-  const [list, ...docs] = await Promise.all([
+  const [list, ...read] = await Promise.all([
     own ? env.LEDGER.get(`tasks:${user.store}`, "json") : null,
     ...months.map((m) => env.LEDGER.get(`ledger:${user.store}:${m}`, "json")),
   ]);
+  const docs = await toMidnightDays(env, user.store, months.slice(), read.map((d) => d || {}));
   if (list) tasks[user.username] = list;
   docs.forEach((doc) => {
     for (const date of Object.keys(doc || {})) {
@@ -448,6 +530,7 @@ async function writeLedger(request, env, me) {
       const segs = cleanSegs(it.segs, hours);
       doc[it.date] = {
         ...(it.step === 5 ? { step: 5 } : {}),
+        mid: 1,
         blocks: cleanBlocks(it.blocks),
         tasks: str(it.tasks, MAX_TASKS),
         hours,
