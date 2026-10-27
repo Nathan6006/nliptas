@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Plan the next day, score every 5 minutes from 6am to 6am as signal or noise, and track the ratio over time.">
+<meta name="description" content="Plan the next day, score every 5 minutes from midnight to midnight as signal or noise, and track the ratio over time.">
 <meta name="color-scheme" content="light dark">
 <style>
 :root{color-scheme:light dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -269,6 +269,7 @@ body:has(.areamenu) .selbar,body:has(.dragtip) .selbar{display:none}
 .evt.sel .del{display:grid;place-items:center}
 .evt.tiny .del{width:16px;height:16px;font-size:11px}
 .evt .lab{align-self:flex-start;flex:none;max-width:calc(100% - 56px);height:19px;padding:0 8px;border:1px solid color-mix(in srgb,var(--signal) 45%,transparent);border-radius:10px;background:color-mix(in srgb,var(--panel) 70%,transparent);color:inherit;font:inherit;font-size:12px;font-weight:600;line-height:17px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;position:relative;z-index:2}
+.evt.n .lab{border-color:color-mix(in srgb,var(--noise) 45%,transparent)}
 .evt .lab:hover{background:var(--panel)}
 .evt .lab.empty{font-weight:400;border-style:dashed;opacity:.8}
 .evt.tiny .lab{position:absolute;left:6px;top:50%;transform:translateY(-50%);height:15px;line-height:13px;font-size:10.5px;padding:0 6px}
@@ -418,14 +419,14 @@ th{color:var(--ink-3);font-weight:500;font-size:10.5px;letter-spacing:.07em;text
 "use strict";
 
 /* ---------------- constants ---------------- */
-var HOURS=[6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,0,1,2,3,4,5];
-var DAY_END=6;           // the scored day runs 6am until this hour
+var HOURS=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23];
+var DAY_END=0;           // the scored day runs midnight to midnight
 /* You, then the friend you're comparing with (if any). Set by setPeople(). */
 var PEOPLE=[];
 var STATES=["s","n"];
 var STATE_LABEL={s:"Signal",n:"Noise"};
 var MARK={s:"S",n:"N"};
-/* The day is scored in 5-minute slots keyed "H:MM" (6:00 … 5:55). Entries
+/* The day is scored in 5-minute slots keyed "H:MM" (0:00 … 23:55). Entries
    saved before that were in 15-minute slots; `step` on an entry says which. */
 var STEP=5,PER_HOUR=60/STEP;
 var MINS=[];for(var mi=0;mi<60;mi+=STEP)MINS.push(String(mi).padStart(2,"0"));
@@ -438,8 +439,8 @@ var MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
 function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 function parseISO(s){var p=s.split("-");return new Date(+p[0],+p[1]-1,+p[2]);}
 function shift(s,n){var d=parseISO(s);d.setDate(d.getDate()+n);return iso(d);}
-/* The day rolls over at 3am: until then it still counts as the day before. */
-var DAY_ROLLOVER=3;
+/* The day rolls over at 4am: until then it still counts as the day before. */
+var DAY_ROLLOVER=4;
 function todayISO(){return iso(new Date(Date.now()-DAY_ROLLOVER*36e5));}
 function longDate(s){var d=parseISO(s);return DOW[d.getDay()]+" "+MON[d.getMonth()]+" "+d.getDate();}
 function shortDate(s){var d=parseISO(s);return(d.getMonth()+1)+"/"+d.getDate();}
@@ -523,11 +524,11 @@ function normHours(h){
   for(var k in h){if(h[k]==="s"||h[k]==="n")out[k]=h[k];}
   return out;
 }
-/* What a signal slot was spent on: slot -> area name, only on signal slots. */
+/* What a slot was spent on: slot -> area name, on signal or noise slots. */
 function normAreas(a,hours){
   var out={};
   if(!a||typeof a!=="object")return out;
-  for(var k in a){if(hours[k]==="s"&&typeof a[k]==="string"&&a[k].trim())out[k]=a[k].trim().slice(0,60);}
+  for(var k in a){if(hours[k]&&typeof a[k]==="string"&&a[k].trim())out[k]=a[k].trim().slice(0,60);}
   return out;
 }
 /* Which block a slot belongs to: slot -> short id, so blocks drawn next to
@@ -2045,7 +2046,7 @@ function fill(hours,a,b,v){for(var k=Math.min(a,b);k<=Math.max(a,b);k++)hours[SL
 /* Inside the day column each slot reads "<mark>|<block id>|<area>", so a block
    is a run of identical values: blocks never merge with their neighbours, and
    moves/resizes carry the id and area along. */
-function mk(kind,id,area){return kind+"|"+(id||"")+"|"+(kind==="s"&&area?area:"");}
+function mk(kind,id,area){return kind+"|"+(id||"")+"|"+(area||"");}
 function parseV(v){
   if(v.length<2)return{kind:v,id:"",area:""};
   var i=v.indexOf("|",2);
@@ -2062,7 +2063,7 @@ function splitCombined(c){
     var p=parseV(c[k]);
     hours[k]=p.kind;
     if(p.id)segs[k]=p.id;
-    if(p.area&&p.kind==="s")areas[k]=p.area;
+    if(p.area)areas[k]=p.area;
   }
   return{hours:hours,areas:areas,segs:segs};
 }
@@ -2086,14 +2087,14 @@ function drawRuns(col,hours,editable,onCycle,selSlot){
     b.style.top="calc("+r.a+" * var(--hh) / "+PER_HOUR+" + 1px)";
     b.style.height="max(2px, calc("+len+" * var(--hh) / "+PER_HOUR+" - 2px))";
     b.dataset.a=r.a;
-    if(kind==="s"&&editable){
+    if(editable){
       /* Always-there label chip: the area, or a placeholder to add one. */
       var lb=el("button","lab"+(area?"":" empty"),area||"+ Label");
       lb.title=area?"Change label":"What was this?";lb.setAttribute("aria-label",area?"Label: "+area+". Change it":"Add a label");lb.tabIndex=-1;
       b.appendChild(lb);
     }else b.appendChild(el("b",null,area||STATE_LABEL[kind]));
     b.appendChild(el("span","when",spanText(r.a,r.b)+" · "+fmtDur(len)));
-    var note=kind==="s"&&col.__notes?col.__notes[parseV(r.v).id]||"":"";
+    var note=col.__notes?col.__notes[parseV(r.v).id]||"":"";
     if(note)b.appendChild(el("span","det",note));
     if(note)name+=" — "+note;
     b.title=name+", "+spanText(r.a,r.b);
@@ -2103,7 +2104,7 @@ function drawRuns(col,hours,editable,onCycle,selSlot){
       b.onkeydown=function(ev){
         if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();onCycle(r);}
         else if(ev.metaKey||ev.ctrlKey||ev.altKey||!isSel)return;
-        else if((ev.key==="l"||ev.key==="L")&&kind==="s"){ev.preventDefault();openAreaMenu(sel.date,sel.person,sel.slot);}
+        else if((ev.key==="l"||ev.key==="L")){ev.preventDefault();openAreaMenu(sel.date,sel.person,sel.slot);}
         else if((ev.key==="s"||ev.key==="S")&&len>1){ev.preventDefault();onCycle(r,"split");}
       };
       var t=el("div","grip top");t.dataset.edge="top";b.appendChild(t);
@@ -2199,11 +2200,11 @@ function dayColumn(date,person,editable){
       seg.appendChild(b);
     });
     top.appendChild(seg);
-    if(p.kind==="s"){
+    {
       var lb=el("button","sb-lab"+(p.area?"":" empty"),p.area||"+ Label");
       lb.onclick=function(){openAreaMenu(date,person,r.a);};
       top.appendChild(lb);
-    }else top.appendChild(el("span","sb-fill"));
+    }
     if(len>1){var sp=el("button","sb-ic","✂");sp.title="Split in two";sp.setAttribute("aria-label","Split in two");sp.onclick=function(){split(r);};top.appendChild(sp);}
     var del=el("button","sb-ic del","🗑");del.title="Delete";del.setAttribute("aria-label","Delete block");del.onclick=function(){if(selDelete)selDelete();};
     top.appendChild(del);
@@ -2388,9 +2389,9 @@ function useArea(person,name){
 function tagRun(date,person,slot,name){
   var en=ensure(date,person),c=combined(en);
   var r=runAt(runsOf(c),slot);
-  if(!r||kindOf(r.v)!=="s")return;
+  if(!r)return;
   if(name){name=useArea(person,name);markTasksDirty(person);}
-  var sp=splitCombined(fill(c,r.a,r.b,mk("s",parseV(r.v).id||sid(),name)));
+  var sp=splitCombined(fill(c,r.a,r.b,mk(kindOf(r.v),parseV(r.v).id||sid(),name)));
   en.hours=sp.hours;en.areas=sp.areas;en.segs=sp.segs;en.notes=normNotes(en.notes,en.segs);
   markDirty(key(date,person));
   sel={date:date,person:person,slot:slot};
@@ -2429,7 +2430,7 @@ function openAreaMenu(date,person,slot,toDetails){
   if(person!==state.me)return;
   var anchor=document.querySelector(".day-col.edit .evt.sel");
   var r=runAt(runsOf(combined(getEntry(date,person))),slot);
-  if(!anchor||!r||kindOf(r.v)!=="s")return;
+  if(!anchor||!r)return;
   var current=areaOf(r.v);
   var m=el("div","duemenu areamenu");
   var head=el("div","am-head");
@@ -2907,7 +2908,7 @@ function dataTable(series,dates){
 function hoursChart(series,dates){
   var card=el("div","card");
   card.appendChild(el("h3",null,"Where the hours went"));
-  card.appendChild(el("div","note","Each column is one day, 6am to 6am. Signal at the base, noise above it."));
+  card.appendChild(el("div","note","Each column is one day, midnight to midnight. Signal at the base, noise above it."));
   var leg=el("div","legend");leg.style.marginBottom="12px";
   [["Signal","var(--signal)"],["Noise","var(--noise)"]].forEach(function(k){
     var w=el("span","key");
