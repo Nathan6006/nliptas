@@ -16,12 +16,12 @@ Live at **https://nliptas.pages.dev**
   Friends tab also has requests, change password and log out.
 
 - **Plan** — defaults to today, with Tomorrow as the next shortcut (Score hours
-  offers Yesterday instead). The day rolls over at 3am. Only you see
+  offers Yesterday instead). The day rolls over at 4am. Only you see
   your plan. Time blocks are free text
   (`10-1045`, `9-sleep`), the way the spreadsheet had them. Underneath is a
   running task list per person that carries over day to day, with optional due
   dates and nested groups (groups, subgroups, tasks at any level).
-- **Score hours** — 6am to 6am as a calendar column in 5-minute steps. Drag to
+- **Score hours** — midnight to midnight as a calendar column in 5-minute steps. Drag to
   paint signal, click a block to switch signal ↔ noise, Backspace to delete.
   Blocks stay as drawn (neighbours never merge); ✂ splits one in two, and
   dragging the line between two touching blocks moves it.

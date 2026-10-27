@@ -281,13 +281,13 @@ function cleanHours(v) {
   return out;
 }
 
-// Slot -> area name, kept only on slots that are signal.
+// Slot -> area name, kept on any scored slot (signal or noise).
 function cleanSlotAreas(v, hours) {
   const out = {};
   if (!v || typeof v !== "object") return out;
   for (const k of Object.keys(v)) {
     const n = str(v[k], 60).trim();
-    if (n && hours[k] === "s") out[k] = n;
+    if (n && (hours[k] === "s" || hours[k] === "n")) out[k] = n;
   }
   return out;
 }
