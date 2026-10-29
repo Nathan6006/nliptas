@@ -139,6 +139,8 @@ button.due:hover{background:var(--panel-2);color:var(--ink)}
 .am-opt .am-name span{font-family:inherit;font-size:13.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .am-opt .am-name i{font-style:normal;font-family:var(--f-mono);font-size:11px;color:var(--ink-3)}
 .am-opt.cur .am-name span{font-weight:600;color:var(--signal)}
+.areamenu.noise .am-opt.cur .am-name span{color:var(--noise)}
+.areamenu.noise .am-in:focus{outline-color:color-mix(in srgb,var(--noise) 45%,transparent)}
 .am-opt.add .am-name span{color:var(--signal)}
 .duemenu .am-x{flex:none;padding:4px 8px;color:var(--ink-3);font-size:15px;line-height:1;opacity:0}
 .am-opt:hover .am-x,.am-opt.hi .am-x,.am-x:focus-visible{opacity:1}
@@ -482,9 +484,10 @@ var saveTimer=null;
 /* Tasks: one running list per person, independent of the day, in nested groups.
    tasks[person] = {items:[{id,text,due,done,doneAt,createdAt,group}],
                     groups:[{id,name,parent,collapsed}], migrated,
-                    areas:[{name,uses}]}   <- the "what was this signal?" menu */
+                    areas:[{name,uses}],      <- the "what was this?" menu for signal
+                    noiseAreas:[{name,uses}]} <- and its own one for noise */
 var tasks={};
-function emptyList(){return{items:[],groups:[],migrated:false,areas:[]};}
+function emptyList(){return{items:[],groups:[],migrated:false,areas:[],noiseAreas:[]};}
 var tasksDirty={};
 var tasksLoaded=false;
 var entriesLoaded=false;
@@ -704,14 +707,20 @@ function cleanList(v){
   });
   var items=(v&&Array.isArray(v.items)?v.items:[]).map(cleanTask).filter(Boolean);
   items.forEach(function(t){if(t.group&&!byId[t.group])t.group="";});
-  var seen={},areas=[];
-  (v&&Array.isArray(v.areas)?v.areas:[]).forEach(function(a){
-    var n=a&&typeof a.name==="string"?a.name.trim().slice(0,60):"";
-    if(!n||seen[n.toLowerCase()])return;
-    seen[n.toLowerCase()]=1;
-    areas.push({name:n,uses:Math.max(0,Math.floor(+a.uses||0))});
-  });
-  return{items:items,groups:groups,migrated:!!(v&&v.migrated),areas:areas};
+  function labels(list){
+    var seen={},out=[];
+    list.forEach(function(a){
+      var n=a&&typeof a.name==="string"?a.name.trim().slice(0,60):"";
+      if(!n||seen[n.toLowerCase()])return;
+      seen[n.toLowerCase()]=1;
+      out.push({name:n,uses:Math.max(0,Math.floor(+a.uses||0))});
+    });
+    return out;
+  }
+  /* A list saved before the noise menu existed has none yet (null): it's
+     started from the labels already on noise blocks, see splitLabels(). */
+  return{items:items,groups:groups,migrated:!!(v&&v.migrated),areas:labels(v&&Array.isArray(v.areas)?v.areas:[]),
+    noiseAreas:v&&Array.isArray(v.noiseAreas)?labels(v.noiseAreas):null};
 }
 function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function tsSave(){try{localStorage.setItem(lsKey("tasks"),JSON.stringify(tasks));}catch(e){}}
@@ -730,9 +739,30 @@ function markTasksDirty(person){
   saveTimer=setTimeout(flush,500);
 }
 
+/* Noise used to share the signal label menu. The first time a list has no
+   noise menu, labels found on your noise blocks start one, and labels only
+   ever used on noise leave the signal menu. */
+function splitLabels(){
+  var me=state.me,L=tasks[me];
+  if(!me||!tasksLoaded||!entriesLoaded||!L||L.noiseAreas)return;
+  var noise={},signal={};
+  for(var id in entries){
+    var e=entries[id];
+    if(e.person!==me)continue;
+    runsOf(combined(e)).forEach(function(r){
+      var p=parseV(r.v);if(!p.area)return;
+      if(p.kind==="n")noise[p.area]=(noise[p.area]||0)+1;else signal[p.area.toLowerCase()]=1;
+    });
+  }
+  L.noiseAreas=Object.keys(noise).map(function(n){return{name:n,uses:noise[n]};});
+  L.areas=L.areas.filter(function(a){return !(a.name in noise)||signal[a.name.toLowerCase()];});
+  quietly(function(){markTasksDirty(me);});
+}
+
 /* Carry the old per-day task text into the running list, once: the most
    recent day that had any becomes the starting tasks. */
 function maybeMigrate(){
+  splitLabels();
   var me=state.me;
   if(!me||!tasksLoaded||!entriesLoaded||tasks[me].migrated)return;
   var best=null,limit=shift(todayISO(),1);
@@ -814,7 +844,7 @@ function flush(){
   var body={};
   var items=payloadFor(ids);
   if(items.length)body.entries=items;
-  if(mineList)body.tasks=[{person:me,items:tasks[me].items,groups:tasks[me].groups,migrated:tasks[me].migrated,areas:tasks[me].areas}];
+  if(mineList)body.tasks=[{person:me,items:tasks[me].items,groups:tasks[me].groups,migrated:tasks[me].migrated,areas:tasks[me].areas,noiseAreas:tasks[me].noiseAreas||undefined}];
   setNote("saving…");
   return api("POST","ledger",body).then(function(){
     sent();
@@ -2516,11 +2546,14 @@ function dayColumn(date,person,editable){
    option you won't need again (past labels stay). */
 var areaMenu=null;
 
-function sortedAreas(person){
-  return tasks[person].areas.slice().sort(function(a,b){return b.uses-a.uses||a.name.localeCompare(b.name);});
+/* Signal and noise each have their own menu. */
+function labelKey(kind){return kind==="n"?"noiseAreas":"areas";}
+function labelList(person,kind){var k=labelKey(kind);if(!tasks[person][k])tasks[person][k]=[];return tasks[person][k];}
+function sortedAreas(person,kind){
+  return labelList(person,kind).slice().sort(function(a,b){return b.uses-a.uses||a.name.localeCompare(b.name);});
 }
-function useArea(person,name){
-  var list=tasks[person].areas,low=name.toLowerCase();
+function useArea(person,name,kind){
+  var list=labelList(person,kind),low=name.toLowerCase();
   for(var i=0;i<list.length;i++)if(list[i].name.toLowerCase()===low){list[i].uses++;return list[i].name;}
   list.push({name:name,uses:1});
   return name;
@@ -2529,7 +2562,7 @@ function tagRun(date,person,slot,name){
   var en=ensure(date,person),c=combined(en);
   var r=runAt(runsOf(c),slot);
   if(!r)return;
-  if(name){name=useArea(person,name);markTasksDirty(person);}
+  if(name){name=useArea(person,name,kindOf(r.v));markTasksDirty(person);}
   var sp=splitCombined(fill(c,r.a,r.b,mk(kindOf(r.v),parseV(r.v).id||sid(),name)));
   en.hours=sp.hours;en.areas=sp.areas;en.segs=sp.segs;en.notes=normNotes(en.notes,en.segs);
   markDirty(key(date,person));
@@ -2570,8 +2603,8 @@ function openAreaMenu(date,person,slot,toDetails){
   var anchor=document.querySelector(".day-col.edit .evt.sel");
   var r=runAt(runsOf(combined(getEntry(date,person))),slot);
   if(!anchor||!r)return;
-  var current=areaOf(r.v);
-  var m=el("div","duemenu areamenu");
+  var current=areaOf(r.v),kind=kindOf(r.v);
+  var m=el("div","duemenu areamenu"+(kind==="n"?" noise":""));
   var head=el("div","am-head");
   head.appendChild(el("b",null,"What was this?"));
   head.appendChild(el("span",null,spanText(r.a,r.b)));
@@ -2604,7 +2637,7 @@ function openAreaMenu(date,person,slot,toDetails){
   function draw(){
     var q=inp.value.trim(),low=q.toLowerCase(),exact=false;
     list.innerHTML="";opts=[];
-    sortedAreas(person).forEach(function(a){
+    sortedAreas(person,kind).forEach(function(a){
       if(low&&a.name.toLowerCase().indexOf(low)<0)return;
       if(a.name.toLowerCase()===low)exact=true;
       var row=el("div","am-opt"+(a.name===current?" cur":""));row.setAttribute("role","option");
@@ -2615,8 +2648,8 @@ function openAreaMenu(date,person,slot,toDetails){
       var x=el("button","am-x","×");x.title="Remove from the menu";x.setAttribute("aria-label","Remove "+a.name+" from the menu");
       x.onclick=function(ev){
         ev.stopPropagation();
-        var L=tasks[person].areas;
-        tasks[person].areas=L.filter(function(o){return o!==a;});
+        var k=labelKey(kind);
+        tasks[person][k]=labelList(person,kind).filter(function(o){return o!==a;});
         markTasksDirty(person);
         draw();inp.focus({preventScroll:true});
       };
@@ -2631,14 +2664,14 @@ function openAreaMenu(date,person,slot,toDetails){
       add.appendChild(ab);list.appendChild(add);
       opts.push({el:add,name:q});
     }
-    if(!opts.length)list.appendChild(el("div","am-empty",tasks[person].areas.length?"No match":"Nothing yet. Type what you worked on, then Enter."));
+    if(!opts.length)list.appendChild(el("div","am-empty",labelList(person,kind).length?"No match":kind==="n"?"Nothing yet. Type what it was, then Enter.":"Nothing yet. Type what you worked on, then Enter."));
     if(current&&!q){
       var cl=el("button","clear","Remove label");
       cl.onclick=function(){pick("");};
       list.appendChild(cl);
     }
     hi=Math.min(hi,Math.max(0,opts.length-1));
-    inp.placeholder=tasks[person].areas.length?"Type to filter or add…":"e.g. school hw";
+    inp.placeholder=labelList(person,kind).length?"Type to filter or add…":kind==="n"?"e.g. youtube":"e.g. school hw";
     light();
   }
   inp.oninput=function(){hi=0;draw();};
