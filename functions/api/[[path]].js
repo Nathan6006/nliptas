@@ -9,14 +9,18 @@
  * `pwv` bumps on every password change, which signs out old sessions.
  * `social:<username>` holds { friends, incoming, outgoing }, and
  * `months:<store>` the YYYY-MM months that have a ledger doc, so reads don't
- * need a KV list. Each is its own key so no write can clobber another kind.
+ * need a KV list, and `prefs:<username>` { day: { start, end } }, the clock
+ * hours that person's day runs between (default 5 to 5). Each is its own key
+ * so no write can clobber another kind.
  *
  * Ledger: one KV key per person per month, `ledger:<store>:<YYYY-MM>`, holding
  * { "<YYYY-MM-DD>": { step, blocks, tasks, hours, areas, segs, notes, updatedAt } }.
  * `step` is 5 for days in 5-minute slots; days without it are in 15-minute
- * slots and the client spreads them out on load. `mid` marks a day in the
- * midnight-to-midnight layout; days without it are moved over on first read. `areas` maps a signal slot to
- * what it was spent on; `segs` maps a slot to the id of the block it belongs
+ * slots and the client spreads them out on load. A day holds the slots of its
+ * calendar date, midnight to midnight, whatever range a person's day is shown
+ * in; `mid` marks that layout, and days without it (from when days ran 6am to
+ * 6am) are moved over on first read. `areas` maps a scored slot to what it
+ * was spent on; `segs` maps a slot to the id of the block it belongs
  * to, so adjacent blocks stay separate; `notes` maps a block id to optional
  * details beyond its label. Each person only ever writes their own keys.
  *
@@ -133,7 +137,26 @@ async function getSocial(env, name) {
 }
 const putSocial = (env, name, s) => env.LEDGER.put(`social:${name}`, JSON.stringify(s));
 
-const publicMe = (user, social) => ({ username: user.username, ...social });
+const publicMe = (user, social, prefs) => ({ username: user.username, ...social, ...(prefs ? { day: prefs.day } : {}) });
+
+/* Where your day starts and ends, as clock hours 0-23. Equal means a full
+   24 hours; otherwise it runs from start up to end, past midnight if needed. */
+const DEFAULT_DAY = { start: 5, end: 5 };
+const hour = (v) => (Number.isInteger(v) && v >= 0 && v <= 23 ? v : null);
+async function getPrefs(env, name) {
+  const p = (await env.LEDGER.get(`prefs:${name}`, "json")) || {};
+  const d = p.day || {};
+  return { day: hour(d.start) == null || hour(d.end) == null ? { ...DEFAULT_DAY } : { start: d.start, end: d.end } };
+}
+async function setPrefs(request, env, me) {
+  const body = await readBody(request);
+  if (!body) return json({ error: "bad_json" }, 400);
+  const d = body.day || {};
+  if (hour(d.start) == null || hour(d.end) == null) return json({ error: "bad_day" }, 400);
+  const prefs = { day: { start: d.start, end: d.end } };
+  await env.LEDGER.put(`prefs:${me.username}`, JSON.stringify(prefs));
+  return json({ me: publicMe(me, await getSocial(env, me.username), prefs) });
+}
 
 async function readBody(request) {
   try {
@@ -189,7 +212,8 @@ async function login(request, env) {
     return json({ error: "bad_login" }, 401);
   }
   if (fails) await env.LEDGER.delete(failKey);
-  return json({ me: publicMe(user, await getSocial(env, username)) }, 200, { "set-cookie": sessionCookie(await makeSession(env, user), SESSION_DAYS * 86400) });
+  const [social, prefs] = await Promise.all([getSocial(env, username), getPrefs(env, username)]);
+  return json({ me: publicMe(user, social, prefs) }, 200, { "set-cookie": sessionCookie(await makeSession(env, user), SESSION_DAYS * 86400) });
 }
 
 async function changePassword(request, env, user) {
@@ -481,7 +505,7 @@ async function readLedger(request, env, me) {
   const tasks = {};
   const reads = [readPerson(env, me, entries, tasks, true)];
   const name = (new URL(request.url).searchParams.get("with") || "").toLowerCase();
-  const mine = await getSocial(env, me.username);
+  const [mine, prefs] = await Promise.all([getSocial(env, me.username), getPrefs(env, me.username)]);
   let friend = "";
   if (name && mine.friends.includes(name)) {
     const [them, theirs] = await Promise.all([getUser(env, name), getSocial(env, name)]);
@@ -491,7 +515,7 @@ async function readLedger(request, env, me) {
     }
   }
   await Promise.all(reads);
-  return json({ me: publicMe(me, mine), friend, entries, tasks });
+  return json({ me: publicMe(me, mine, prefs), friend, entries, tasks });
 }
 
 async function writeLedger(request, env, me) {
@@ -570,7 +594,11 @@ export async function onRequest({ request, env, params }) {
 
   const me = await currentUser(request, env);
   if (!me) return json({ error: "unauthorized" }, 401);
-  if (route === "me" && method === "GET") return json({ me: publicMe(me, await getSocial(env, me.username)) });
+  if (route === "me" && method === "GET") {
+    const [social, prefs] = await Promise.all([getSocial(env, me.username), getPrefs(env, me.username)]);
+    return json({ me: publicMe(me, social, prefs) });
+  }
+  if (route === "prefs" && method === "POST") return setPrefs(request, env, me);
   if (route === "password" && method === "POST") return changePassword(request, env, me);
   if (route === "friends" && method === "POST") return friends(request, env, me);
   if (route === "ledger" && method === "GET") return readLedger(request, env, me);

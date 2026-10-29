@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Plan the next day, score every 5 minutes from midnight to midnight as signal or noise, and track the ratio over time.">
+<meta name="description" content="Plan the next day, score every 5 minutes of your day as signal or noise, and track the ratio over time.">
 <meta name="color-scheme" content="light dark">
 <style>
 :root{color-scheme:light dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -392,6 +392,13 @@ th{color:var(--ink-3);font-weight:500;font-size:10.5px;letter-spacing:.07em;text
 .ghost.on{border-color:var(--signal);color:var(--signal)}
 .ghost.danger{border-color:var(--noise);color:var(--noise)}
 .pwform{max-width:360px;margin-bottom:14px}
+.dayrange{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin:14px 0 10px}
+.daypick{display:flex;flex-direction:column;gap:5px}
+.daypick span{font-family:var(--f-mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+.daypick select{appearance:none;-webkit-appearance:none;font:inherit;font-size:15px;font-weight:600;color:var(--ink);background-color:var(--panel);background-repeat:no-repeat;background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(-45deg,transparent 50%,var(--ink-3) 50%);background-size:5px 5px,5px 5px;background-position:calc(100% - 17px) 55%,calc(100% - 12px) 55%;border:1px solid var(--line-2);border-radius:10px;padding:8px 34px 8px 13px;min-width:104px;cursor:pointer;transition:border-color .15s}
+.daypick select:hover{border-color:var(--ink-3)}
+.dayarrow{color:var(--ink-3);font-size:16px;padding-bottom:9px}
+.daysum{font-size:13px;color:var(--ink-2);margin-bottom:6px}
 .pwform .ghost{border-style:solid}
 @media (max-width:560px){.vs-btn .vs-me,.vs-btn .vs-dme{display:none}.vsmenu{right:auto;left:0}.saveflag{display:none}}
 .saveflag{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.06em}
@@ -419,8 +426,6 @@ th{color:var(--ink-3);font-weight:500;font-size:10.5px;letter-spacing:.07em;text
 "use strict";
 
 /* ---------------- constants ---------------- */
-var HOURS=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23];
-var DAY_END=0;           // the scored day runs midnight to midnight
 /* You, then the friend you're comparing with (if any). Set by setPeople(). */
 var PEOPLE=[];
 var STATES=["s","n"];
@@ -430,8 +435,19 @@ var MARK={s:"S",n:"N"};
    saved before that were in 15-minute slots; `step` on an entry says which. */
 var STEP=5,PER_HOUR=60/STEP;
 var MINS=[];for(var mi=0;mi<60;mi+=STEP)MINS.push(String(mi).padStart(2,"0"));
-var SLOTS=[];
-HOURS.forEach(function(h){MINS.forEach(function(m){SLOTS.push(h+":"+m);});});
+/* Your day runs from DAY_START on its date up to DAY_END (equal: 24 hours),
+   past midnight if need be. Set in Settings; 5am to 5am unless you change it.
+   HOURS and SLOTS are the clock hours and slots of that range, in order. */
+var DAY_START=5,DAY_END=5;
+var HOURS=[],SLOTS=[],INDAY={};
+function setRange(start,end){
+  DAY_START=start;DAY_END=end;
+  var len=(end-start+24)%24||24;
+  HOURS=[];for(var i=0;i<len;i++)HOURS.push((start+i)%24);
+  SLOTS=[];INDAY={};
+  HOURS.forEach(function(h){MINS.forEach(function(m){var k=h+":"+m;SLOTS.push(k);INDAY[k]=1;});});
+}
+setRange(DAY_START,DAY_END);
 var DOW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 var MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
@@ -439,9 +455,8 @@ var MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
 function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 function parseISO(s){var p=s.split("-");return new Date(+p[0],+p[1]-1,+p[2]);}
 function shift(s,n){var d=parseISO(s);d.setDate(d.getDate()+n);return iso(d);}
-/* The day rolls over at 4am: until then it still counts as the day before. */
-var DAY_ROLLOVER=4;
-function todayISO(){return iso(new Date(Date.now()-DAY_ROLLOVER*36e5));}
+/* Today switches over when your day starts: before that it's still the day before. */
+function todayISO(){return iso(new Date(Date.now()-DAY_START*36e5));}
 function longDate(s){var d=parseISO(s);return DOW[d.getDay()]+" "+MON[d.getMonth()]+" "+d.getDate();}
 function shortDate(s){var d=parseISO(s);return(d.getMonth()+1)+"/"+d.getDate();}
 function relDate(s){
@@ -472,6 +487,7 @@ var state={
    incoming, outgoing}. Cached so the page opens straight away. */
 var account=null;
 try{account=JSON.parse(localStorage.getItem("sl2.account")||"null");}catch(e){}
+if(account&&account.day){setRange(account.day.start,account.day.end);state.planDate=state.scoreDate=todayISO();}
 
 var entries={};        // id -> entry, yours and the compared friend's
 var saveNote="";
@@ -557,6 +573,75 @@ function normEntry(e){
 }
 function normAll(o){for(var id in o){if(o[id])normEntry(o[id]);}return o;}
 function getEntry(date,person){return entries[key(date,person)]||null;}
+function parseKey(id){var i=id.indexOf("__");return{date:id.slice(0,i),person:id.slice(i+2)};}
+
+/* ---------------- stored days vs your days ----------------
+   The server stores each calendar date midnight to midnight. `entries` holds
+   days as you see them: a day's slots from DAY_START on run on its own date,
+   the ones before DAY_START come from the next date. Slots outside a range
+   shorter than 24 hours are kept aside in `out`, so editing never drops them,
+   and changing the range never changes what is stored. */
+function hourOfSlot(k){return +String(k).split(":")[0];}
+function toView(stored){
+  var out={};
+  function day(date,person){var id=key(date,person);return out[id]||(out[id]=blank(date,person));}
+  for(var id in stored){
+    var c=stored[id];if(!c)continue;
+    var own=day(c.date,c.person);
+    own.blocks=c.blocks||[];own.tasks=c.tasks||"";
+    for(var k in c.hours){
+      var v=day(hourOfSlot(k)<DAY_START?shift(c.date,-1):c.date,c.person);
+      var into=INDAY[k]?v:(v.out||(v.out={hours:{},areas:{},segs:{},notes:{}}));
+      into.hours[k]=c.hours[k];
+      if(c.areas&&c.areas[k])into.areas[k]=c.areas[k];
+      var sg=c.segs&&c.segs[k];
+      if(sg){into.segs[k]=sg;if(c.notes&&c.notes[sg])into.notes[sg]=c.notes[sg];}
+    }
+  }
+  return out;
+}
+/* One stored date, put back together from the days on screen. */
+function storedDay(date,person){
+  var v=entries[key(date,person)],prev=DAY_START?entries[key(shift(date,-1),person)]:null;
+  var c={date:date,person:person,step:STEP,blocks:v?v.blocks:[],tasks:v?v.tasks:"",hours:{},areas:{},segs:{},notes:{}};
+  [[v,false],[prev,true]].forEach(function(p){
+    if(!p[0])return;
+    [p[0],p[0].out].forEach(function(src){
+      if(!src)return;
+      for(var k in src.hours){
+        if((hourOfSlot(k)<DAY_START)!==p[1])continue;
+        c.hours[k]=src.hours[k];
+        if(src.areas&&src.areas[k])c.areas[k]=src.areas[k];
+        var sg=src.segs&&src.segs[k];
+        if(sg){c.segs[k]=sg;if(src.notes&&src.notes[sg])c.notes[sg]=src.notes[sg];}
+      }
+    });
+  });
+  return c;
+}
+/* The stored dates a day on screen touches: its own, and the next one's early hours. */
+function storedIds(id){var p=parseKey(id);return DAY_START?[id,key(shift(p.date,1),p.person)]:[id];}
+function toStored(){
+  var ids={},out={};
+  for(var id in entries)storedIds(id).forEach(function(s){ids[s]=1;});
+  for(var s in ids){
+    var p=parseKey(s),c=storedDay(p.date,p.person);
+    if(Object.keys(c.hours).length||c.blocks.length||c.tasks)out[s]=c;
+  }
+  return out;
+}
+/* Switch to a new range: same data, regrouped into days. */
+function applyRange(start,end){
+  if(start===DAY_START&&end===DAY_END)return;
+  var stored=toStored(),oldToday=todayISO();
+  setRange(start,end);
+  entries=toView(stored);
+  if(state.scoreDate===oldToday)state.scoreDate=todayISO();
+  if(state.planDate===oldToday)state.planDate=todayISO();
+  sel=null;lastRemote="";
+  undoStack=[];redoStack=[];baseSnap=snapMine();
+  lsSave();
+}
 function ensure(date,person){
   var id=key(date,person);
   if(!entries[id])entries[id]=blank(date,person);
@@ -571,7 +656,7 @@ function tally(h){
   t.counted=t.s+t.n;t.logged=t.counted;
   return t;
 }
-/* A day only counts as good (green) above this signal share. */
+/* A day counts as good (green) at this signal share or above. */
 var GOOD_PCT=67;
 function pct(t){return t.counted?Math.round(100*t.s/t.counted):null;}
 function ratioText(t){
@@ -582,16 +667,17 @@ function ratioText(t){
 function dayTally(date,person){var e=getEntry(date,person);return tally(e?e.hours:{});}
 
 /* ---------------- persistence ---------------- */
-/* This device's copy, per account: "sl2.<username>.<what>". The copy from
-   before accounts ("sl.entries", "sl.tasks") is left as it was. */
+/* This device's copy, per account: "sl2.<username>.<what>", days kept as
+   stored (by calendar date) under "days". Older copies ("sl.*", and
+   "entries"/"dirty", kept as days were shown) are no longer read. */
 function lsKey(what){return"sl2."+state.me+"."+what;}
 function lsSave(){
-  try{localStorage.setItem(lsKey("entries"),JSON.stringify(entries));}catch(e){}
+  try{localStorage.setItem(lsKey("days"),JSON.stringify(toStored()));}catch(e){}
 }
 function lsLoad(){
   try{
-    var raw=localStorage.getItem(lsKey("entries"));
-    if(raw){var o=JSON.parse(raw);if(o&&typeof o==="object")return normAll(realDays(o));}
+    var raw=localStorage.getItem(lsKey("days"));
+    if(raw){var o=JSON.parse(raw);if(o&&typeof o==="object")return toView(normAll(realDays(o)));}
   }catch(e){}
   return null;
 }
@@ -600,15 +686,16 @@ function realDays(o){
   for(var id in o){var e=o[id];if(!e||!/^\d{4}-\d{2}-\d{2}$/.test(e.date||"")||!e.person||id!==key(e.date,e.person))delete o[id];}
   return o;
 }
-/* Which of your days and lists haven't reached the server yet, kept so a
-   reload while offline doesn't forget to send them. */
+/* Which of your stored dates and lists haven't reached the server yet, kept
+   so a reload while offline doesn't forget to send them. `dirty` and
+   `sending` are keyed by stored date, so they don't depend on the range. */
 function saveDirty(){
-  try{localStorage.setItem(lsKey("dirty"),JSON.stringify({e:Object.keys(dirty),t:Object.keys(tasksDirty)}));}catch(e){}
+  try{localStorage.setItem(lsKey("pending"),JSON.stringify({e:Object.keys(dirty),t:Object.keys(tasksDirty)}));}catch(e){}
 }
 function loadDirty(){
   try{
-    var o=JSON.parse(localStorage.getItem(lsKey("dirty"))||"null");
-    if(o){(o.e||[]).forEach(function(id){if(entries[id])dirty[id]=true;});(o.t||[]).forEach(function(p){if(p===state.me)tasksDirty[p]=true;});}
+    var o=JSON.parse(localStorage.getItem(lsKey("pending"))||"null");
+    if(o){(o.e||[]).forEach(function(id){if(/^\d{4}-\d{2}-\d{2}__/.test(id)&&parseKey(id).person===state.me)dirty[id]=true;});(o.t||[]).forEach(function(p){if(p===state.me)tasksDirty[p]=true;});}
   }catch(e){}
 }
 
@@ -681,7 +768,7 @@ function maybeMigrate(){
 function markDirty(id){
   if(!entries[id]||entries[id].person!==state.me)return;
   noteChange();
-  dirty[id]=true;
+  storedIds(id).forEach(function(s){dirty[s]=true;});
   lsSave();saveDirty();
   if(saveTimer)clearTimeout(saveTimer);
   saveTimer=setTimeout(flush,650);
@@ -712,9 +799,10 @@ function api(method,path,body){
 function payloadFor(ids){
   var out=[];
   ids.forEach(function(id){
-    var e=entries[id];
-    if(!e||!e.date||e.person!==state.me)return;
-    out.push({date:e.date,person:e.person,step:e.step,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas||{},segs:e.segs||{},notes:e.notes||{}});
+    var p=parseKey(id);
+    if(p.person!==state.me)return;
+    var e=storedDay(p.date,p.person);
+    out.push({date:e.date,person:e.person,step:e.step,blocks:e.blocks,tasks:e.tasks,hours:e.hours,areas:e.areas,segs:e.segs,notes:e.notes});
   });
   return out;
 }
@@ -731,7 +819,7 @@ function flush(){
     if(Object.keys(dirty).length||Object.keys(tasksDirty).length)setNote("offline — kept on this device");
     return Promise.resolve(false);
   }
-  var ids=Object.keys(dirty).filter(function(id){return entries[id]&&entries[id].person===me;});
+  var ids=Object.keys(dirty).filter(function(id){return parseKey(id).person===me;});
   var mineList=!!tasksDirty[me];
   dirty={};tasksDirty={};
   if(!ids.length&&!mineList){saveDirty();return Promise.resolve(true);}
@@ -786,8 +874,14 @@ function loadLocal(){
   loadDirty();
 }
 
+/* Your day's range comes with your account; responses that leave it out keep the last one. */
+function keepDay(me){
+  if(me&&!me.day)me.day=account&&account.day||{start:5,end:5};
+  return me;
+}
 function signedIn(me){
-  account=me;
+  account=keepDay(me);
+  setRange(account.day.start,account.day.end);state.planDate=state.scoreDate=todayISO();
   try{localStorage.setItem("sl2.account",JSON.stringify(me));}catch(e){}
   entries={};tasks={};dirty={};tasksDirty={};
   entriesLoaded=false;tasksLoaded=false;online=false;lastRemote="";lastTasksRemote="";
@@ -812,7 +906,8 @@ function signedOut(){
 /* Take what the server says about your account: friends may have come or gone. */
 function takeMe(me){
   if(!me||me.username!==state.me)return;
-  account=me;
+  account=keepDay(me);
+  applyRange(me.day.start,me.day.end);
   try{localStorage.setItem("sl2.account",JSON.stringify(me));}catch(e){}
   var had=state.friend;
   if(!state.friend&&me.friends.length)state.friend=me.friends[0];
@@ -885,11 +980,15 @@ function adoptTasks(fresh){
 function adopt(fresh){
   entriesLoaded=true;
   normAll(fresh);
-  for(var id in entries){if((dirty[id]||sending[id])&&entries[id].person===state.me)fresh[id]=entries[id];}
-  var stamp=JSON.stringify(fresh);
+  for(var id in Object.assign({},dirty,sending)){
+    if(id===state.me||parseKey(id).person!==state.me)continue;
+    var c=storedDay(parseKey(id).date,state.me);
+    if(Object.keys(c.hours).length||c.blocks.length||c.tasks)fresh[id]=c;else delete fresh[id];
+  }
+  var stamp=DAY_START+"-"+DAY_END+JSON.stringify(fresh);
   if(stamp===lastRemote)return;
   lastRemote=stamp;
-  entries=fresh;hasCache=true;
+  entries=toView(fresh);hasCache=true;
   lsSave();
   resetBase();
 }
@@ -936,6 +1035,7 @@ function render(){
   if(!state.me){v.appendChild(authView());return;}
   if(!entriesLoaded&&!hasCache){v.appendChild(loadingView());return;}
   if(state.view==="friends")v.appendChild(friendsView());
+  else if(state.view==="settings")v.appendChild(settingsView());
   else if(state.view==="plan")v.appendChild(planView());
   else if(state.view==="score")v.appendChild(scoreView());
   else if(state.view==="history")v.appendChild(historyView());
@@ -1023,7 +1123,7 @@ function renderTabs(){
   var t=document.getElementById("tabs");t.innerHTML="";
   if(!state.me)return;
   var asks=(account.incoming||[]).length;
-  [["score","Score hours"],["plan","Plan"],["history","History"],["analysis","Analysis"],["friends","Friends"]].forEach(function(p){
+  [["score","Score hours"],["plan","Plan"],["history","History"],["analysis","Analysis"],["friends","Friends"],["settings","Settings"]].forEach(function(p){
     var b=el("button","tab",p[1]);
     if(p[0]==="friends"&&asks){var n=el("span","badge",String(asks));n.setAttribute("aria-label",asks+" friend request"+(asks===1?"":"s"));b.appendChild(n);}
     b.setAttribute("role","tab");
@@ -1205,8 +1305,62 @@ function friendsView(){
   });
   cols.appendChild(c2);
   f.appendChild(cols);
+  return f;
+}
+
+function settingsView(){
+  var f=frag();
+  var head=el("div");head.style.marginBottom="14px";
+  head.appendChild(el("div","eyebrow","Signed in as "+state.me));
+  head.appendChild(el("h2",null,"Settings"));
+  f.appendChild(head);
+  f.appendChild(dayCard());
   f.appendChild(accountCard());
   return f;
+}
+
+/* When your day starts and ends. Only regroups the hours on screen: what's
+   stored is by calendar date, so nothing moves or is lost either way. */
+var dayMsg="";
+function dayCard(){
+  var c=el("div","card");
+  c.appendChild(el("h3",null,"Your day"));
+  c.appendChild(el("div","note","The hours each day covers on Score hours, History and Analysis, and when today switches over. Changing it never changes anything you've scored."));
+  var row=el("div","dayrange");
+  function pick(label,val,id){
+    var w=el("label","daypick");
+    w.appendChild(el("span",null,label));
+    var s=document.createElement("select");s.id=id;
+    for(var h=0;h<24;h++){var o=document.createElement("option");o.value=h;o.textContent=hourLabel(h);if(h===val)o.selected=true;s.appendChild(o);}
+    w.appendChild(s);
+    return w;
+  }
+  row.appendChild(pick("Starts",DAY_START,"day-start"));
+  row.appendChild(el("span","dayarrow","→"));
+  row.appendChild(pick("Ends",DAY_END,"day-end"));
+  c.appendChild(row);
+  var len=(DAY_END-DAY_START+24)%24||24;
+  c.appendChild(el("div","daysum",(DAY_START===0&&DAY_END===0?"Midnight to midnight":hourLabel(DAY_START)+" to "+hourLabel(DAY_END)+(DAY_END<=DAY_START?" the next day":""))+" · "+len+" hour"+(len===1?"":"s")+
+    (len<24?" · hours outside it are kept but not shown or counted":"")));
+  var msg=el("div",dayMsg&&dayMsg.ok?"form-ok":"form-err",dayMsg?dayMsg.t:"");msg.setAttribute("role","status");
+  c.appendChild(msg);
+  row.onchange=function(){
+    var a=+row.querySelector("#day-start").value,b=+row.querySelector("#day-end").value;
+    var was=account.day;
+    account.day={start:a,end:b};
+    applyRange(a,b);dayMsg="";
+    render();
+    api("POST","prefs",{day:{start:a,end:b}}).then(function(res){
+      account=keepDay(res.me);
+      try{localStorage.setItem("sl2.account",JSON.stringify(account));}catch(e){}
+      dayMsg={ok:true,t:"Saved."};softRender();
+    },function(e){
+      if(e==="unauthorized"){signedOut();return;}
+      account.day=was;applyRange(was.start,was.end);
+      dayMsg={t:e==="offline"?"You're offline, so this wasn't saved.":"Couldn't save that ("+e+")."};render();
+    });
+  };
+  return c;
 }
 
 function accountCard(){
@@ -1259,7 +1413,7 @@ function accountCard(){
 /* Everything is saved by now, so this device's copy can go. */
 function logOutHere(){
   var me=state.me;
-  try{["entries","tasks","dirty","friend"].forEach(function(k){localStorage.removeItem("sl2."+me+"."+k);});}catch(e){}
+  try{["entries","dirty","days","pending","tasks","friend"].forEach(function(k){localStorage.removeItem("sl2."+me+"."+k);});}catch(e){}
   hasCache=false;authMode="login";friendMsg="";
   signedOut();
 }
@@ -1304,7 +1458,7 @@ function scoreLine(t){
   var d=el("div","score");
   var p=pct(t);
   var big=el("span","big",p===null?"—":p+"%");
-  big.style.color=p===null?"var(--ink-3)":(p>GOOD_PCT?"var(--signal)":"var(--noise)");
+  big.style.color=p===null?"var(--ink-3)":(p>=GOOD_PCT?"var(--signal)":"var(--noise)");
   d.appendChild(big);
   d.appendChild(el("span","chip hrs",fmtH(t.s)+"h S · "+fmtH(t.n)+"h N"));
   return d;
@@ -2592,7 +2746,7 @@ function historyView(){
       line.appendChild(strip);
       var pv=pct(t);
       var chip=el("div","chip",pv===null?"not scored":pv+"% · "+fmtH(t.s)+"h S · "+fmtH(t.n)+"h N");
-      if(pv!==null){chip.style.color=pv>GOOD_PCT?"var(--signal)":"var(--noise)";}
+      if(pv!==null){chip.style.color=pv>=GOOD_PCT?"var(--signal)":"var(--noise)";}
       line.appendChild(chip);
       pair.appendChild(line);
     });
@@ -2908,7 +3062,7 @@ function dataTable(series,dates){
 function hoursChart(series,dates){
   var card=el("div","card");
   card.appendChild(el("h3",null,"Where the hours went"));
-  card.appendChild(el("div","note","Each column is one day, midnight to midnight. Signal at the base, noise above it."));
+  card.appendChild(el("div","note","Each column is one day, "+hourLabel(DAY_START)+" to "+hourLabel(DAY_END)+". Signal at the base, noise above it."));
   var leg=el("div","legend");leg.style.marginBottom="12px";
   [["Signal","var(--signal)"],["Noise","var(--noise)"]].forEach(function(k){
     var w=el("span","key");
