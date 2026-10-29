@@ -13,15 +13,17 @@ Live at **https://nliptas.pages.dev**
   at the top.
 - **Friends** — send a request by username; once they accept, you can see each
   other's scored hours. Plans (schedule and task list) stay private. The
-  Friends tab also has requests, change password and log out.
+  Friends tab also has requests.
+- **Settings** — when your day starts and ends (5am to 5am unless you change
+  it), change password, log out.
 
 - **Plan** — defaults to today, with Tomorrow as the next shortcut (Score hours
-  offers Yesterday instead). The day rolls over at 4am. Only you see
+  offers Yesterday instead). Today switches over when your day starts. Only you see
   your plan. Time blocks are free text
   (`10-1045`, `9-sleep`), the way the spreadsheet had them. Underneath is a
   running task list per person that carries over day to day, with optional due
   dates and nested groups (groups, subgroups, tasks at any level).
-- **Score hours** — midnight to midnight as a calendar column in 5-minute steps. Drag to
+- **Score hours** — your day (5am to 5am by default) as a calendar column in 5-minute steps. Drag to
   paint signal, click a block to switch signal ↔ noise, Backspace to delete.
   Blocks stay as drawn (neighbours never merge); ✂ splits one in two, and
   dragging the line between two touching blocks moves it.
@@ -58,8 +60,9 @@ Run `./build.sh` after every edit to `signal-ledger.html`.
 | --- | --- |
 | `user:<username>` | Password hash, and `store`: where that person's data lives. |
 | `social:<username>` | Friends, incoming and outgoing requests. |
+| `prefs:<username>` | When that person's day starts and ends. |
 | `months:<store>` | Which months have a ledger doc. |
-| `ledger:<store>:<YYYY-MM>` | Every day in that month. |
+| `ledger:<store>:<YYYY-MM>` | Every day in that month, by calendar date (midnight to midnight, whatever range it is shown in). |
 | `tasks:<store>` | The running task list. |
 
 `store` is the username for everyone who signs up. The two original accounts
