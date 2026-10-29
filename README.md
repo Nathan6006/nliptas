@@ -32,7 +32,8 @@ Live at **https://nliptas.pages.dev**
   block or its handles straight away; the page scrolls when you drag near the
   edge, and the label menu opens as a bottom sheet.
   Unscored time is left out of both sides of the ratio.
-  Marking time signal pops up a menu asking what it was; the menu remembers
+  Marking time pops up a menu asking what it was (signal and noise each have
+  their own menu); it remembers
   everything you've typed into it, most-used first, and × drops an option.
   Under the label there's an optional Details line (e.g. "history essay").
 - **Undo** — ⌘Z / Ctrl+Z and ⇧⌘Z / Ctrl+Y undo and redo your own changes.

@@ -26,7 +26,8 @@
  *
  * Tasks are one running list per person, not per day: `tasks:<store>`,
  * holding { items: [{ id, text, due, done, doneAt, createdAt, group }],
- * groups: [{ id, name, parent, collapsed }], migrated, areas: [{ name, uses }] }.
+ * groups: [{ id, name, parent, collapsed }], migrated, areas: [{ name, uses }],
+ * noiseAreas: [{ name, uses }] } — the label menus for signal and for noise.
  * Only the owner writes their list, so the whole list is replaced on save.
  *
  * Friends are mutual: a request sits in the other person's `incoming` until
@@ -567,9 +568,15 @@ async function writeLedger(request, env, me) {
     await env.LEDGER.put(name, JSON.stringify(doc));
   }
   for (const l of lists) {
+    // A page from before the noise menu existed leaves it out: keep the stored one.
+    let noise = Array.isArray(l.noiseAreas) ? cleanAreaList(l.noiseAreas) : null;
+    if (!noise) {
+      const prev = await env.LEDGER.get(`tasks:${me.store}`, "json");
+      if (prev && Array.isArray(prev.noiseAreas)) noise = prev.noiseAreas;
+    }
     await env.LEDGER.put(
       `tasks:${me.store}`,
-      JSON.stringify({ items: cleanReminders(l.items), groups: cleanGroups(l.groups), migrated: !!l.migrated, areas: cleanAreaList(l.areas), updatedAt: new Date().toISOString() }),
+      JSON.stringify({ items: cleanReminders(l.items), groups: cleanGroups(l.groups), migrated: !!l.migrated, areas: cleanAreaList(l.areas), ...(noise ? { noiseAreas: noise } : {}), updatedAt: new Date().toISOString() }),
     );
   }
   return json({ ok: true, months: groups.size, lists: lists.length });
