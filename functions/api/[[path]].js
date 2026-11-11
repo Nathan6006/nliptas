@@ -28,6 +28,7 @@
  * holding { items: [{ id, text, due, done, doneAt, createdAt, group }],
  * groups: [{ id, name, parent, collapsed }], migrated, areas: [{ name, uses }],
  * noiseAreas: [{ name, uses }] } — the label menus for signal and for noise.
+ * A label removed from a menu carries deletedAt for 3 hours (undo), then goes.
  * Only the owner writes their list, so the whole list is replaced on save.
  *
  * Friends are mutual: a request sits in the other person's `incoming` until
@@ -338,15 +339,22 @@ function cleanNotes(v, segs) {
   return out;
 }
 
+// A label removed from the menu keeps `deletedAt` and stays for this long so
+// it can be undone; after that it's dropped the next time the list is saved.
+const LABEL_GRACE_MS = 3 * 60 * 60 * 1000;
+
 function cleanAreaList(v) {
   if (!Array.isArray(v)) return [];
   const seen = new Set();
   const out = [];
+  const now = Date.now();
   for (const a of v.slice(0, MAX_AREAS)) {
     const name = str(a && a.name, 60).trim();
     if (!name || seen.has(name.toLowerCase())) continue;
+    const at = typeof a.deletedAt === "string" ? Date.parse(a.deletedAt) : NaN;
+    if (!isNaN(at) && now - at >= LABEL_GRACE_MS) continue;
     seen.add(name.toLowerCase());
-    out.push({ name, uses: Math.max(0, Math.floor(Number(a.uses) || 0)) });
+    out.push({ name, uses: Math.max(0, Math.floor(Number(a.uses) || 0)), ...(!isNaN(at) ? { deletedAt: new Date(at).toISOString() } : {}) });
   }
   return out;
 }
