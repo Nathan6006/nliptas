@@ -34,7 +34,10 @@ Live at **https://nliptas.pages.dev**
   Unscored time is left out of both sides of the ratio.
   Marking time pops up a menu asking what it was (signal and noise each have
   their own menu); it remembers
-  everything you've typed into it, most-used first, and × drops an option.
+  everything you've typed into it, most-used first, and × drops an option
+  (it sits under Removed with an Undo for 3 hours before it's gone for good).
+  The count is how many blocks you've given that label: relabeling a block,
+  clearing its label or switching it between signal and noise gives one back.
   Under the label there's an optional Details line (e.g. "history essay").
 - **Undo** — ⌘Z / Ctrl+Z and ⇧⌘Z / Ctrl+Y undo and redo your own changes.
 - **History** — every day in reverse order with both hour strips and both scores.

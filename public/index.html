@@ -163,6 +163,14 @@ button.due:hover{background:var(--panel-2);color:var(--ink)}
 .am-det>span{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);padding-left:5px}
 .am-det .am-in{margin:0}
 .am-empty{padding:6px 10px 8px;font-size:12.5px;color:var(--ink-3)}
+.am-gone-h{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);padding:8px 10px 3px;border-top:1px solid var(--line);margin-top:4px}
+.am-opt.gone{gap:8px;padding-left:10px}
+.am-opt.gone:hover{background:none}
+.am-gone-n{flex:1;min-width:0;font-size:13.5px;color:var(--ink-3);text-decoration:line-through;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.am-opt.gone i{font-style:normal;font-family:var(--f-mono);font-size:11px;color:var(--ink-3)}
+.duemenu .am-undo{flex:none;padding:4px 10px;font-size:12.5px;font-weight:600;color:var(--signal);background:none}
+.areamenu.noise .am-undo{color:var(--noise)}
+.areamenu.sheet .am-opt.gone{min-height:42px}
 .area-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px 28px}
 .area-tot{margin-left:auto;font-family:var(--f-mono);font-size:11.5px;color:var(--ink-3)}
 .area-row{display:grid;grid-template-columns:minmax(70px,34%) 1fr auto;align-items:center;gap:10px;padding:3px 0;font-size:13px}
@@ -505,6 +513,7 @@ var tasks={};
 function emptyList(){return{items:[],groups:[],migrated:false,areas:[],noiseAreas:[]};}
 var tasksDirty={};
 var tasksLoaded=false;
+var LABEL_GRACE=3*3600*1000; /* how long a label removed from a menu can be undone */
 var entriesLoaded=false;
 var hasCache=false;    // this device has a copy of your ledger from before
 
@@ -727,8 +736,12 @@ function cleanList(v){
     list.forEach(function(a){
       var n=a&&typeof a.name==="string"?a.name.trim().slice(0,60):"";
       if(!n||seen[n.toLowerCase()])return;
+      var gone=a.deletedAt&&!isNaN(Date.parse(a.deletedAt))?String(a.deletedAt):"";
+      if(gone&&labelGone({deletedAt:gone}))return;
       seen[n.toLowerCase()]=1;
-      out.push({name:n,uses:Math.max(0,Math.floor(+a.uses||0))});
+      var o={name:n,uses:Math.max(0,Math.floor(+a.uses||0))};
+      if(gone)o.deletedAt=gone;
+      out.push(o);
     });
     return out;
   }
@@ -2334,6 +2347,8 @@ function dayColumn(date,person,editable){
   function cycle(r,how){
     if(how==="split"){split(r);return;}
     var p=parseV(r.v);
+    /* Switching sides drops the label, so it gives back its use. */
+    if(p.area&&person===state.me){dropUse(person,p.area,p.kind);markTasksDirty(person);}
     if(p.kind==="n"){commitSignal(fill(withoutRun(hours,r),r.a,r.b,mk("s",p.id||sid(),"")),r.a);return;}
     select(r.a);
     commit(fill(withoutRun(hours,r),r.a,r.b,mk("n",p.id||sid(),"")));
@@ -2558,26 +2573,49 @@ function dayColumn(date,person,editable){
 /* ---------------- what the signal went to ----------------
    After a stretch is marked signal, a menu asks what it was. The menu is
    everything you have typed into it before, most-used first; × drops an
-   option you won't need again (past labels stay). */
+   option you won't need again (past labels stay). A dropped option is only
+   marked (deletedAt) and can be undone for LABEL_GRACE before it's gone. */
 var areaMenu=null;
+function labelGone(a){return !!a.deletedAt&&Date.now()-Date.parse(a.deletedAt)>=LABEL_GRACE;}
 
 /* Signal and noise each have their own menu. */
 function labelKey(kind){return kind==="n"?"noiseAreas":"areas";}
 function labelList(person,kind){var k=labelKey(kind);if(!tasks[person][k])tasks[person][k]=[];return tasks[person][k];}
+function liveLabels(person,kind){return labelList(person,kind).filter(function(a){return !a.deletedAt;});}
+function removedLabels(person,kind){return labelList(person,kind).filter(function(a){return a.deletedAt&&!labelGone(a);});}
 function sortedAreas(person,kind){
-  return labelList(person,kind).slice().sort(function(a,b){return b.uses-a.uses||a.name.localeCompare(b.name);});
+  return liveLabels(person,kind).sort(function(a,b){return b.uses-a.uses||a.name.localeCompare(b.name);});
 }
 function useArea(person,name,kind){
   var list=labelList(person,kind),low=name.toLowerCase();
-  for(var i=0;i<list.length;i++)if(list[i].name.toLowerCase()===low){list[i].uses++;return list[i].name;}
+  for(var i=0;i<list.length;i++)if(list[i].name.toLowerCase()===low){
+    /* Typing a removed label again brings it back with its count, unless
+       its grace period ran out while the page was open. */
+    if(list[i].deletedAt){if(labelGone(list[i]))list[i].uses=0;delete list[i].deletedAt;}
+    list[i].uses++;return list[i].name;
+  }
   list.push({name:name,uses:1});
   return name;
+}
+/* A block losing its label (relabeled, cleared, or switched between signal
+   and noise) takes one use back, so switching back and forth never piles up. */
+function dropUse(person,name,kind){
+  var list=labelList(person,kind),low=name.toLowerCase();
+  for(var i=0;i<list.length;i++)if(list[i].name.toLowerCase()===low){if(list[i].uses>0)list[i].uses--;return;}
 }
 function tagRun(date,person,slot,name){
   var en=ensure(date,person),c=combined(en);
   var r=runAt(runsOf(c),slot);
   if(!r)return;
-  if(name){name=useArea(person,name,kindOf(r.v));markTasksDirty(person);}
+  /* Picking the label it already has changes nothing; otherwise the old
+     label gives back its use and the new one takes one. */
+  var old=parseV(r.v).area;
+  if(name&&old&&old.toLowerCase()===name.toLowerCase())name=old;
+  else{
+    if(old)dropUse(person,old,kindOf(r.v));
+    if(name)name=useArea(person,name,kindOf(r.v));
+    if(old||name)markTasksDirty(person);
+  }
   var sp=splitCombined(fill(c,r.a,r.b,mk(kindOf(r.v),parseV(r.v).id||sid(),name)));
   en.hours=sp.hours;en.areas=sp.areas;en.segs=sp.segs;en.notes=normNotes(en.notes,en.segs);
   markDirty(key(date,person));
@@ -2663,8 +2701,7 @@ function openAreaMenu(date,person,slot,toDetails){
       var x=el("button","am-x","×");x.title="Remove from the menu";x.setAttribute("aria-label","Remove "+a.name+" from the menu");
       x.onclick=function(ev){
         ev.stopPropagation();
-        var k=labelKey(kind);
-        tasks[person][k]=labelList(person,kind).filter(function(o){return o!==a;});
+        a.deletedAt=new Date().toISOString();
         markTasksDirty(person);
         draw();inp.focus({preventScroll:true});
       };
@@ -2672,6 +2709,26 @@ function openAreaMenu(date,person,slot,toDetails){
       list.appendChild(row);
       opts.push({el:row,name:a.name});
     });
+    /* Recently removed: kept for three hours so a stray × can be undone. */
+    var gone=removedLabels(person,kind).filter(function(a){return !low||a.name.toLowerCase().indexOf(low)>=0;});
+    if(gone.length){
+      list.appendChild(el("div","am-gone-h","Removed"));
+      gone.sort(function(a,b){return b.deletedAt.localeCompare(a.deletedAt);}).forEach(function(a){
+        var row=el("div","am-opt gone");
+        var nm=el("span","am-gone-n",a.name);
+        var left=Math.max(1,Math.ceil((LABEL_GRACE-(Date.now()-Date.parse(a.deletedAt)))/60000));
+        row.title="Gone for good in "+(left>=60?Math.floor(left/60)+"h "+(left%60)+"m":left+"m");
+        var u=el("button","am-undo","Undo");u.setAttribute("aria-label","Put "+a.name+" back in the menu");
+        u.onclick=function(ev){
+          ev.stopPropagation();
+          delete a.deletedAt;
+          markTasksDirty(person);
+          draw();inp.focus({preventScroll:true});
+        };
+        row.appendChild(nm);row.appendChild(el("i",null,String(a.uses)));row.appendChild(u);
+        list.appendChild(row);
+      });
+    }
     if(q&&!exact){
       var add=el("div","am-opt add");
       var ab=el("button","am-name");ab.appendChild(el("span",null,"+ Add “"+q+"”"));
@@ -2679,14 +2736,14 @@ function openAreaMenu(date,person,slot,toDetails){
       add.appendChild(ab);list.appendChild(add);
       opts.push({el:add,name:q});
     }
-    if(!opts.length)list.appendChild(el("div","am-empty",labelList(person,kind).length?"No match":kind==="n"?"Nothing yet. Type what it was, then Enter.":"Nothing yet. Type what you worked on, then Enter."));
+    if(!opts.length&&!gone.length)list.appendChild(el("div","am-empty",liveLabels(person,kind).length?"No match":kind==="n"?"Nothing yet. Type what it was, then Enter.":"Nothing yet. Type what you worked on, then Enter."));
     if(current&&!q){
       var cl=el("button","clear","Remove label");
       cl.onclick=function(){pick("");};
       list.appendChild(cl);
     }
     hi=Math.min(hi,Math.max(0,opts.length-1));
-    inp.placeholder=labelList(person,kind).length?"Type to filter or add…":kind==="n"?"e.g. youtube":"e.g. school hw";
+    inp.placeholder=liveLabels(person,kind).length?"Type to filter or add…":kind==="n"?"e.g. youtube":"e.g. school hw";
     light();
   }
   inp.oninput=function(){hi=0;draw();};
