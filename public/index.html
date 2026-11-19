@@ -672,19 +672,19 @@ function tally(h){
 var GOOD_PCT=67;
 function pct(t){return t.counted?Math.round(100*t.s/t.counted):null;}
 /* Color for a signal share: green at GOOD_PCT and above, red below. Right at
-   GOOD_PCT the hue is light (washed toward the background); it passes through
-   the plain signal/noise color and ends dark (pushed toward the ink) at 0% and
-   100%. The curve is steep near the threshold (where most days land, roughly
-   40-80%) and flattens toward the ends, so 90 vs 100 or 0 vs 20 barely differ.
-   Mixing with --bg/--ink keeps it legible in dark mode, where it runs dim to bright. */
+   GOOD_PCT the hue is light (washed toward white); it passes through the plain
+   signal/noise color and ends dark (pushed toward black) at 0% and 100%, in
+   both themes. The curve is steep near the threshold (where most days land,
+   roughly 40-80%) and flattens toward the ends, so 90 vs 100 or 0 vs 20 barely
+   differ. */
 function pctColor(p){
   if(p===null)return"var(--ink-3)";
   var good=p>=GOOD_PCT,d=Math.abs(p-GOOD_PCT);
   var span=good?100-GOOD_PCT:GOOD_PCT,k=good?11:15;
   var t=Math.min(1,(1-Math.exp(-d/k))/(1-Math.exp(-span/k)));
   var c="var("+(good?"--signal":"--noise")+")";
-  if(t<0.45)return"color-mix(in oklab,"+c+","+"var(--bg) "+Math.round(55*(0.45-t)/0.45)+"%)";
-  return"color-mix(in oklab,"+c+","+"var(--ink) "+Math.round(45*(t-0.45)/0.55)+"%)";
+  if(t<0.4)return"color-mix(in oklab,"+c+",#fff "+Math.round(60*(0.4-t)/0.4)+"%)";
+  return"color-mix(in oklab,"+c+",#000 "+Math.round(55*(t-0.4)/0.6)+"%)";
 }
 function ratioText(t){
   if(!t.counted)return"—";
