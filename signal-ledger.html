@@ -664,9 +664,9 @@ function pct(t){return t.counted?Math.round(100*t.s/t.counted):null;}
 function pctColor(p){
   if(p===null)return"var(--ink-3)";
   var good=p>=GOOD_PCT,d=Math.abs(p-GOOD_PCT);
-  var span=good?100-GOOD_PCT:GOOD_PCT,k=good?11:15;
+  var span=good?100-GOOD_PCT:GOOD_PCT,k=good?17:24;
   var t=Math.min(1,(1-Math.exp(-d/k))/(1-Math.exp(-span/k)));
-  var L=(0.82-0.18*t).toFixed(3),C=(0.05+0.17*t).toFixed(3);
+  var L=(0.78-0.2*t).toFixed(3),C=(0.05+0.13*t).toFixed(3);
   return"oklch("+L+" "+C+" "+(good?150:27)+")";
 }
 function ratioText(t){
