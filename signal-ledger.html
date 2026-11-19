@@ -369,6 +369,18 @@ th{color:var(--ink-3);font-weight:500;font-size:10.5px;letter-spacing:.07em;text
 .duemenu .vs-opt span{font-family:var(--f-body);font-size:13.5px;color:var(--ink)}
 .duemenu .vs-opt[aria-checked="true"]{font-weight:700}
 .duemenu .vs-add{border-top:1px solid var(--line);border-radius:0 0 7px 7px;margin-top:4px;padding-top:9px;color:var(--ink-2)}
+.vsmenu.vsmenu-l{left:0;right:auto;font-family:var(--f-body);font-weight:400;font-size:13px}
+.fsw{display:flex;align-items:center;gap:2px;min-width:0;margin-left:-6px}
+.fsw .vs{min-width:0}
+.vs-btn.vs-inline{border-color:transparent;background:none;padding:3px 8px;font-family:var(--f-disp);font-size:15px;gap:8px;max-width:100%}
+.vs-btn.vs-inline:hover,.vs-btn.vs-inline[aria-expanded="true"]{border-color:var(--line-2);background:var(--panel)}
+.vs-btn.vs-inline .vs-them{font-weight:700}
+.fsw-arr{flex:none;width:26px;height:26px;display:grid;place-items:center;padding:0;border:1px solid transparent;background:none;border-radius:999px;cursor:pointer;transition:border-color .15s,background .15s}
+.fsw-arr:hover{border-color:var(--line-2);background:var(--panel)}
+.fsw-arr:focus-visible{outline:2px solid color-mix(in srgb,var(--them) 50%,transparent);outline-offset:1px}
+.fsw-arr::before{content:"";width:6px;height:6px;border-left:1.5px solid var(--ink-3);border-bottom:1.5px solid var(--ink-3);transform:translateX(1px) rotate(45deg)}
+.fsw-arr.next::before{transform:translateX(-1px) rotate(-135deg)}
+.fsw-arr:hover::before{border-color:var(--ink)}
 .badge{display:inline-grid;place-items:center;min-width:17px;height:17px;margin-left:6px;padding:0 5px;border-radius:999px;background:var(--them);color:#fff;font-size:10.5px;font-weight:700;vertical-align:1px}
 .compare-empty{border-style:dashed;background:none;justify-content:center}
 .compare-empty .pane-body{align-items:center;text-align:center;padding:40px 22px;gap:8px}
@@ -1099,18 +1111,21 @@ function renderWho(){
 }
 
 /* Who's on the right: a button showing "you vs friend" that opens a menu of
-   your friends. Arrow keys move through it, Escape closes it. */
+   your friends. Arrow keys move through it, Escape closes it. `inline` is the
+   smaller version that sits in the friend's pane header: just their name. */
 var vsClose=null;
-function vsPicker(friends){
+function vsPicker(friends,inline){
   if(vsClose)vsClose();
   var box=el("div","vs");
-  var b=el("button","vs-btn");
+  var b=el("button",inline?"vs-btn vs-inline":"vs-btn");
   b.setAttribute("aria-haspopup","menu");b.setAttribute("aria-expanded","false");
   b.setAttribute("aria-label","Comparing with "+state.friend+". Change who you compare with");
-  var dm=el("span","dot vs-dme");dm.style.background="var(--me)";
   var dt=el("span","dot");dt.style.background="var(--them)";
-  b.appendChild(dm);b.appendChild(el("span","vs-me",state.me));
-  b.appendChild(el("span","vs-x","vs"));
+  if(!inline){
+    var dm=el("span","dot vs-dme");dm.style.background="var(--me)";
+    b.appendChild(dm);b.appendChild(el("span","vs-me",state.me));
+    b.appendChild(el("span","vs-x","vs"));
+  }
   b.appendChild(dt);b.appendChild(el("span","vs-them",state.friend||"pick"));
   b.appendChild(el("span","vs-car"));
   box.appendChild(b);
@@ -1135,7 +1150,7 @@ function vsPicker(friends){
   }
   b.onclick=function(){
     if(menu){close(true);return;}
-    menu=el("div","duemenu vsmenu");menu.setAttribute("role","menu");
+    menu=el("div",inline?"duemenu vsmenu vsmenu-l":"duemenu vsmenu");menu.setAttribute("role","menu");
     menu.appendChild(el("div","vs-h","Compare with"));
     var cur=null;
     friends.forEach(function(f){
@@ -1158,6 +1173,34 @@ function vsPicker(friends){
     (cur||menu.querySelector("button")).focus();
   };
   return box;
+}
+
+/* The friend's name in their pane header: ‹ name ▾ › — the name opens the
+   same menu as the top bar, the arrows step to the previous/next friend. */
+var fswFocus=null; // {dir,until}: keep focus on an arrow across the re-renders a switch causes
+function friendSwitcher(){
+  var friends=account.friends||[];
+  var w=el("div","fsw");
+  if(friends.length<2){w.appendChild(vsPicker(friends,true));return w;}
+  function arrow(dir){
+    var a=el("button","fsw-arr "+dir);
+    a.dataset.dir=dir;
+    a.setAttribute("aria-label",dir==="next"?"Next friend":"Previous friend");
+    a.onclick=function(){
+      var i=friends.indexOf(state.friend),n=friends.length;
+      var to=friends[dir==="next"?(i+1)%n:(i<=0?n-1:i-1)];
+      if(document.activeElement===a)fswFocus={dir:dir,until:Date.now()+4000};
+      pickFriend(to);
+    };
+    if(fswFocus&&fswFocus.dir===dir&&Date.now()<fswFocus.until)setTimeout(function(){if(a.isConnected)a.focus({preventScroll:true});},0);
+    var i=friends.indexOf(state.friend),n=friends.length;
+    a.title=friends[dir==="next"?(i+1)%n:(i<=0?n-1:i-1)];
+    return a;
+  }
+  w.appendChild(arrow("prev"));
+  w.appendChild(vsPicker(friends,true));
+  w.appendChild(arrow("next"));
+  return w;
 }
 
 function renderTabs(){
@@ -2186,9 +2229,11 @@ function scorePane(p){
   var pane=el("div","pane");
   var head=el("div","pane-head");
   var nm=el("div","pane-name");
-  var d=el("span","dot");d.style.background=p.c;
-  nm.appendChild(d);nm.appendChild(el("span",null,p.n));
-  if(mine)nm.appendChild(el("span","chip","you"));
+  if(mine){
+    var d=el("span","dot");d.style.background=p.c;
+    nm.appendChild(d);nm.appendChild(el("span",null,p.n));
+    nm.appendChild(el("span","chip","you"));
+  }else{nm.style.minWidth="0";nm.appendChild(friendSwitcher());}
   head.appendChild(nm);
   head.appendChild(scoreLine(dayTally(date,p.k)));
   pane.appendChild(head);
